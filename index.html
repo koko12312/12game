@@ -3,174 +3,387 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Neon Fusion Drop</title>
+  <title>Power Wash 3D</title>
   <style>
     * { box-sizing: border-box; touch-action: none; user-select: none; margin: 0; padding: 0; }
-    body { background: #0b0d19; color: #fff; font-family: -apple-system, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }
-    #ui { position: absolute; top: 15px; width: 90%; max-width: 400px; display: flex; justify-content: space-between; font-weight: bold; font-size: 18px; pointer-events: none; }
-    canvas { background: #121526; border-radius: 12px; box-shadow: 0 0 25px rgba(0, 255, 255, 0.15); border: 2px solid #222949; }
+    body { background: #1a1a24; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+    #canvas3d { width: 100vw; height: 100vh; display: block; }
+    
+    /* Crosshair */
+    #crosshair {
+      position: absolute; top: 50%; left: 50%; width: 16px; height: 16px;
+      transform: translate(-50%, -50%); pointer-events: none;
+    }
+    #crosshair::before, #crosshair::after {
+      content: ''; position: absolute; background: rgba(255, 255, 255, 0.8);
+    }
+    #crosshair::before { top: 7px; left: 0; width: 16px; height: 2px; }
+    #crosshair::after { top: 0; left: 7px; width: 2px; height: 16px; }
+
+    /* UI Overlay */
+    #hud {
+      position: absolute; top: 16px; left: 16px; right: 16px;
+      display: flex; justify-content: space-between; align-items: center;
+      pointer-events: none;
+    }
+    .card {
+      background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(8px);
+      padding: 10px 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);
+      color: #fff; font-weight: bold; font-size: 14px;
+    }
+    #progress-bar {
+      width: 140px; height: 10px; background: #334155; border-radius: 5px;
+      overflow: hidden; margin-top: 6px;
+    }
+    #progress-fill { width: 0%; height: 100%; background: #38bdf8; transition: width 0.2s; }
+
+    /* Controls */
+    #controls {
+      position: absolute; bottom: 24px; left: 0; right: 0;
+      display: flex; justify-content: space-around; align-items: center;
+      padding: 0 20px; pointer-events: none;
+    }
+    .btn {
+      pointer-events: auto; border: none; outline: none; font-weight: bold;
+      border-radius: 50px; color: white; cursor: pointer;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.3); transition: transform 0.1s;
+    }
+    .btn:active { transform: scale(0.92); }
+    #spray-btn {
+      width: 84px; height: 84px; border-radius: 50%;
+      background: radial-gradient(circle, #0284c7, #0369a1);
+      border: 3px solid #38bdf8; font-size: 14px;
+    }
+    #nozzle-btn {
+      padding: 12px 20px; background: #334155; border: 1px solid #64748b; font-size: 12px;
+    }
   </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
-  <div id="ui">
-    <div>SCORE: <span id="score">0</span></div>
-    <div>COMBO: <span id="combo">1x</span></div>
+  <div id="crosshair"></div>
+  <div id="hud">
+    <div class="card">
+      CLEANED
+      <div id="progress-bar"><div id="progress-fill"></div></div>
+    </div>
+    <div class="card" id="clean-percent">0%</div>
   </div>
-  <canvas id="gameCanvas" width="360" height="600"></canvas>
+
+  <div id="controls">
+    <button class="btn" id="nozzle-btn">NOZZLE: 15°</button>
+    <button class="btn" id="spray-btn">HOLD<br>WASH</button>
+  </div>
+
+  <canvas id="canvas3d"></canvas>
 
   <script>
-    const canvas = document.getElementById('gameCanvas');
-    const ctx = canvas.getContext('2d');
-    const scoreEl = document.getElementById('score');
-    const comboEl = document.getElementById('combo');
+    // --- Audio Engine (Synthesized High-Pressure Jet) ---
+    const AudioEngine = {
+      ctx: null, noise: null, filter: null, gain: null,
+      init() {
+        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const bufferSize = this.ctx.sampleRate * 2;
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
 
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    function playBeep(freq) {
-      if (audioCtx.state === 'suspended') audioCtx.resume();
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-      gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.25);
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.25);
+        this.noise = this.ctx.createBufferSource();
+        this.noise.buffer = buffer;
+        this.noise.loop = true;
+
+        this.filter = this.ctx.createBiquadFilter();
+        this.filter.type = 'bandpass';
+        this.filter.frequency.value = 1200;
+        this.filter.Q.value = 1.8;
+
+        this.gain = this.ctx.createGain();
+        this.gain.gain.value = 0;
+
+        this.noise.connect(this.filter);
+        this.filter.connect(this.gain);
+        this.gain.connect(this.ctx.destination);
+        this.noise.start();
+      },
+      setSpray(active, pressureMultiplier = 1) {
+        if (!this.ctx) this.init();
+        if (this.ctx.state === 'suspended') this.ctx.resume();
+        const targetGain = active ? 0.35 : 0;
+        this.filter.frequency.setValueAtTime(active ? 900 * pressureMultiplier : 300, this.ctx.currentTime);
+        this.gain.gain.setTargetAtTime(targetGain, this.ctx.currentTime, 0.05);
+      },
+      ding() {
+        if (!this.ctx) this.init();
+        const osc = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc.frequency.setValueAtTime(880, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1760, this.ctx.currentTime + 0.3);
+        g.gain.setValueAtTime(0.3, this.ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.5);
+        osc.connect(g); g.connect(this.ctx.destination);
+        osc.start(); osc.stop(this.ctx.currentTime + 0.5);
+      }
+    };
+
+    // --- Three.js Setup ---
+    const canvas = document.getElementById('canvas3d');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color('#1e293b');
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(0, 1.5, 3.8);
+
+    // Lights
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x334155, 0.8);
+    scene.add(hemiLight);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    dirLight.position.set(5, 10, 7);
+    dirLight.castShadow = true;
+    scene.add(dirLight);
+
+    // Ground
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(20, 20),
+      new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.9 })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    // --- Dynamic Dirt Mask (The Core Cleaning Mechanic) ---
+    const TEX_SIZE = 1024;
+    const dirtCanvas = document.createElement('canvas');
+    dirtCanvas.width = TEX_SIZE;
+    dirtCanvas.height = TEX_SIZE;
+    const dctx = dirtCanvas.getContext('2d');
+
+    // Fill initial dirt texture
+    dctx.fillStyle = '#3d2817';
+    dctx.fillRect(0, 0, TEX_SIZE, TEX_SIZE);
+    // Add grunge variation
+    for (let i = 0; i < 4000; i++) {
+      dctx.fillStyle = Math.random() > 0.5 ? '#27190d' : '#4a3320';
+      dctx.beginPath();
+      dctx.arc(Math.random() * TEX_SIZE, Math.random() * TEX_SIZE, Math.random() * 8 + 2, 0, Math.PI * 2);
+      dctx.fill();
     }
 
-    const COLORS = ['#00ffff', '#39ff14', '#ff073a', '#ffea00', '#bf00ff', '#ff007f'];
-    let score = 0, combo = 1, comboTimer = 0, shake = 0;
-    let balls = [], particles = [];
-    let dropX = canvas.width / 2;
+    const dirtTexture = new THREE.CanvasTexture(dirtCanvas);
+    dirtTexture.needsUpdate = true;
 
-    class Ball {
-      constructor(x, y, tier) {
-        this.x = x; this.y = y; this.tier = tier;
-        this.radius = 16 + tier * 6;
-        this.vx = (Math.random() - 0.5) * 2;
-        this.vy = 0;
-        this.color = COLORS[tier % COLORS.length];
+    // Target 3D Model: Vintage Retro Van
+    const vanGroup = new THREE.Group();
+    scene.add(vanGroup);
+
+    const baseMaterial = new THREE.MeshStandardMaterial({
+      color: 0x0284c7, metalness: 0.2, roughness: 0.3
+    });
+
+    const dirtMaterial = new THREE.MeshStandardMaterial({
+      map: dirtTexture, transparent: true, opacity: 0.96, roughness: 0.95
+    });
+
+    // Outer dirty shell geometry
+    const chassisGeo = new THREE.BoxGeometry(1.8, 1.2, 3.2);
+    const chassisClean = new THREE.Mesh(chassisGeo, baseMaterial);
+    chassisClean.position.y = 0.9;
+    chassisClean.castShadow = true;
+    vanGroup.add(chassisClean);
+
+    // Shell with dirt texture mapping
+    const chassisDirt = new THREE.Mesh(chassisGeo, dirtMaterial);
+    chassisDirt.position.copy(chassisClean.position);
+    chassisDirt.scale.set(1.002, 1.002, 1.002);
+    vanGroup.add(chassisDirt);
+
+    // Wheels
+    const wheelGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.25, 24);
+    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.8 });
+    const wheelPositions = [
+      [-0.95, 0.35, 1.0], [0.95, 0.35, 1.0],
+      [-0.95, 0.35, -1.0], [0.95, 0.35, -1.0]
+    ];
+    wheelPositions.forEach(([x, y, z]) => {
+      const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+      wheel.rotation.z = Math.PI / 2;
+      wheel.position.set(x, y, z);
+      vanGroup.add(wheel);
+    });
+
+    // --- Water Spray Particle System ---
+    const PARTICLE_COUNT = 150;
+    const particleGeo = new THREE.BufferGeometry();
+    const particlePos = new Float32Array(PARTICLE_COUNT * 3);
+    particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePos, 3));
+
+    const particleMat = new THREE.PointsMaterial({
+      color: 0xbae6fd, size: 0.05, transparent: true, opacity: 0.75
+    });
+    const particleSystem = new THREE.Points(particleGeo, particleMat);
+    scene.add(particleSystem);
+
+    const particles = Array.from({ length: PARTICLE_COUNT }, () => ({
+      x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, life: 0
+    }));
+
+    // --- Input & Interaction ---
+    let isSpraying = false;
+    let nozzleMode = 0; // 0: 15° Fan, 1: 0° Needle
+    const nozzleConfigs = [
+      { name: 'NOZZLE: 15°', radius: 45, mult: 1.0 },
+      { name: 'NOZZLE: 0°', radius: 18, mult: 1.8 }
+    ];
+
+    const sprayBtn = document.getElementById('spray-btn');
+    const nozzleBtn = document.getElementById('nozzle-btn');
+    const percentEl = document.getElementById('clean-percent');
+    const progressFill = document.getElementById('progress-fill');
+
+    sprayBtn.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      isSpraying = true;
+      AudioEngine.setSpray(true, nozzleConfigs[nozzleMode].mult);
+    });
+    window.addEventListener('pointerup', () => {
+      if (isSpraying) {
+        isSpraying = false;
+        AudioEngine.setSpray(false);
       }
-      update() {
-        this.vy += 0.45;
-        this.x += this.vx;
-        this.y += this.vy;
-        this.vx *= 0.98;
+    });
 
-        if (this.x - this.radius < 0) { this.x = this.radius; this.vx *= -0.6; }
-        if (this.x + this.radius > canvas.width) { this.x = canvas.width - this.radius; this.vx *= -0.6; }
-        if (this.y + this.radius > canvas.height) { this.y = canvas.height - this.radius; this.vy *= -0.4; }
-      }
-      draw() {
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-        ctx.fillStyle = this.color;
-        ctx.shadowColor = this.color;
-        ctx.shadowBlur = 12;
-        ctx.fill();
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = '#000';
-        ctx.font = 'bold ' + (12 + this.tier * 2) + 'px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(Math.pow(2, this.tier + 1), this.x, this.y);
-      }
-    }
+    nozzleBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      nozzleMode = (nozzleMode + 1) % nozzleConfigs.length;
+      nozzleBtn.innerText = nozzleConfigs[nozzleMode].name;
+    });
 
-    function spawnParticles(x, y, color) {
-      for (let i = 0; i < 15; i++) {
-        particles.push({
-          x, y,
-          vx: (Math.random() - 0.5) * 8,
-          vy: (Math.random() - 0.5) * 8,
-          alpha: 1,
-          color
-        });
-      }
-    }
+    // Orbital camera touch rotation
+    let isDragging = false, lastX = 0, lastY = 0;
+    let spherical = { theta: 0, phi: Math.PI / 3, radius: 4.2 };
 
-    function checkCollisions() {
-      for (let i = 0; i < balls.length; i++) {
-        for (let j = i + 1; j < balls.length; j++) {
-          let b1 = balls[i], b2 = balls[j];
-          let dx = b2.x - b1.x, dy = b2.y - b1.y;
-          let dist = Math.sqrt(dx * dx + dy * dy);
-          let minDist = b1.radius + b2.radius;
+    window.addEventListener('pointerdown', (e) => {
+      if (e.target.tagName === 'BUTTON') return;
+      isDragging = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+    });
+    window.addEventListener('pointermove', (e) => {
+      if (!isDragging) return;
+      const dx = (e.clientX - lastX) * 0.006;
+      const dy = (e.clientY - lastY) * 0.006;
+      spherical.theta -= dx;
+      spherical.phi = Math.max(0.2, Math.min(Math.PI / 2.1, spherical.phi - dy));
+      lastX = e.clientX;
+      lastY = e.clientY;
+    });
+    window.addEventListener('pointercancel', () => isDragging = false);
 
-          if (dist < minDist) {
-            if (b1.tier === b2.tier) {
-              spawnParticles((b1.x + b2.x) / 2, (b1.y + b2.y) / 2, b1.color);
-              balls.splice(j, 1);
-              balls.splice(i, 1);
-              balls.push(new Ball((b1.x + b2.x) / 2, (b1.y + b2.y) / 2, b1.tier + 1));
-              comboTimer = 90;
-              combo++;
-              score += Math.pow(2, b1.tier + 2) * combo;
-              shake = 8;
-              playBeep(260 + (b1.tier * 60) + (combo * 20));
-              scoreEl.innerText = score;
-              comboEl.innerText = combo + 'x';
-              return;
-            }
-            let angle = Math.atan2(dy, dx);
-            let overlap = minDist - dist;
-            b1.x -= Math.cos(angle) * overlap * 0.5;
-            b1.y -= Math.sin(angle) * overlap * 0.5;
-            b2.x += Math.cos(angle) * overlap * 0.5;
-            b2.y += Math.sin(angle) * overlap * 0.5;
-          }
+    // --- Raycasting UV Cleaning System ---
+    const raycaster = new THREE.Raycaster();
+    const screenCenter = new THREE.Vector2(0, 0);
+    let cleanedPixels = 0;
+    let cleanPct = 0;
+
+    function cleanSurface() {
+      raycaster.setFromCamera(screenCenter, camera);
+      const intersects = raycaster.intersectObject(chassisDirt);
+
+      if (intersects.length > 0) {
+        const hit = intersects[0];
+        if (hit.uv) {
+          const uvX = hit.uv.x * TEX_SIZE;
+          const uvY = (1 - hit.uv.y) * TEX_SIZE;
+          const rad = nozzleConfigs[nozzleMode].radius;
+
+          // Strip dirt layer using canvas destination-out blend
+          dctx.save();
+          dctx.globalCompositeOperation = 'destination-out';
+          const grad = dctx.createRadialGradient(uvX, uvY, 2, uvX, uvY, rad);
+          grad.addColorStop(0, 'rgba(0,0,0,1)');
+          grad.addColorStop(0.7, 'rgba(0,0,0,0.8)');
+          grad.addColorStop(1, 'rgba(0,0,0,0)');
+          dctx.fillStyle = grad;
+          dctx.beginPath();
+          dctx.arc(uvX, uvY, rad, 0, Math.PI * 2);
+          dctx.fill();
+          dctx.restore();
+
+          dirtTexture.needsUpdate = true;
+          cleanedPixels += rad * 1.5;
+
+          // Update progression
+          const totalAreaEst = TEX_SIZE * TEX_SIZE * 0.45;
+          cleanPct = Math.min(100, Math.floor((cleanedPixels / totalAreaEst) * 100));
+          percentEl.innerText = cleanPct + '%';
+          progressFill.style.width = cleanPct + '%';
+          if (cleanPct === 100) AudioEngine.ding();
         }
       }
     }
 
-    canvas.addEventListener('pointermove', e => {
-      const rect = canvas.getBoundingClientRect();
-      dropX = Math.max(25, Math.min(canvas.width - 25, e.clientX - rect.left));
-    });
+    // --- Game Loop ---
+    const clock = new THREE.Clock();
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = clock.getDelta();
 
-    canvas.addEventListener('pointerdown', () => {
-      if (balls.length < 25) {
-        balls.push(new Ball(dropX, 40, Math.floor(Math.random() * 2)));
-        playBeep(200);
-      }
-    });
+      // Camera positioning
+      camera.position.x = spherical.radius * Math.sin(spherical.phi) * Math.sin(spherical.theta);
+      camera.position.y = spherical.radius * Math.cos(spherical.phi);
+      camera.position.z = spherical.radius * Math.sin(spherical.phi) * Math.cos(spherical.theta);
+      camera.lookAt(0, 0.8, 0);
 
-    function loop() {
-      if (shake > 0) {
-        ctx.setTransform(1, 0, 0, 1, (Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
-        shake *= 0.9;
-        if (shake < 0.5) ctx.setTransform(1, 0, 0, 1, 0, 0);
-      }
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-      ctx.setLineDash([4, 4]);
-      ctx.beginPath();
-      ctx.moveTo(dropX, 0); ctx.lineTo(dropX, canvas.height);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      balls.forEach(b => { b.update(); b.draw(); });
-      checkCollisions();
-
-      particles.forEach((p, idx) => {
-        p.x += p.vx; p.y += p.vy; p.alpha -= 0.03;
-        ctx.fillStyle = p.color;
-        ctx.globalAlpha = Math.max(0, p.alpha);
-        ctx.fillRect(p.x, p.y, 4, 4);
-        ctx.globalAlpha = 1;
-        if (p.alpha <= 0) particles.splice(idx, 1);
-      });
-
-      if (comboTimer > 0) {
-        comboTimer--;
-        if (comboTimer === 0) { combo = 1; comboEl.innerText = '1x'; }
+      // Washing & Particle emission
+      if (isSpraying) {
+        cleanSurface();
+        for (let i = 0; i < 4; i++) {
+          const p = particles.find(pt => pt.life <= 0);
+          if (p) {
+            p.life = 1.0;
+            // Spawn from bottom right wand
+            p.x = camera.position.x + 0.3 * Math.cos(spherical.theta + 1.2);
+            p.y = camera.position.y - 0.2;
+            p.z = camera.position.z + 0.3 * Math.sin(spherical.theta + 1.2);
+            // Fire toward center crosshair
+            p.vx = -p.x * 2.5 + (Math.random() - 0.5) * 0.2;
+            p.vy = (0.8 - p.y) * 2.5 + (Math.random() - 0.5) * 0.2;
+            p.vz = -p.z * 2.5 + (Math.random() - 0.5) * 0.2;
+          }
+        }
       }
 
-      requestAnimationFrame(loop);
+      // Update particle physics
+      const pArray = particleGeo.attributes.position.array;
+      for (let i = 0; i < PARTICLE_COUNT; i++) {
+        const pt = particles[i];
+        if (pt.life > 0) {
+          pt.x += pt.vx * delta;
+          pt.y += pt.vy * delta;
+          pt.z += pt.vz * delta;
+          pt.life -= delta * 3.5;
+        } else {
+          pt.y = -100;
+        }
+        pArray[i * 3] = pt.x;
+        pArray[i * 3 + 1] = pt.y;
+        pArray[i * 3 + 2] = pt.z;
+      }
+      particleGeo.attributes.position.needsUpdate = true;
+
+      renderer.render(scene, camera);
     }
-    loop();
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
   </script>
 </body>
 </html>
