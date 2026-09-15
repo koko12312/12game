@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Neon Fusion Deluxe</title>
+  <style>
+    * { box-sizing: border-box; touch-action: none; user-select: none; margin: 0; padding: 0; }
+    body {
+      background: #080a14;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+    #game-container {
+      position: relative;
+      width: 100%;
+      max-width: 400px;
+      height: 100%;
+      max-height: 700px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    #hud {
+      width: 92%;
+      padding: 10px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 10;
+    }
+    .hud-box {
+      background: rgba(18, 24, 43, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 6px 14px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      color: #94a3b8;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+    .hud-val {
+      font-size: 18px;
+      color: #38bdf8;
+      font-weight: 900;
+      margin-top: 2px;
+    }
+    #next-preview {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      margin-top: 4px;
+      box-shadow: 0 0 10px currentColor;
+    }
+    canvas {
+      background: #0e1222;
+      border-radius: 16px;
+      border: 2px solid #1e293b;
+      box-shadow: 0 0 35px rgba(56, 189, 248, 0.15);
+      flex: 1;
+      width: 92%;
+      max-height: 560px;
+    }
+    #footer-bar {
+      width: 92%;
+      padding: 8px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+    .action-btn {
+      flex: 1;
+      background: #1e293b;
+      border: 1px solid #38bdf8;
+      color: #38bdf8;
+      font-weight: 800;
+      font-size: 12px;
+      padding: 10px 0;
+      border-radius: 10px;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: transform 0.1s;
+    }
+    .action-btn:active { transform: scale(0.95); }
+    .action-btn:disabled { opacity: 0.35; border-color: #475569; color: #64748b; }
+    
+    #gameover-screen {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(8, 10, 20, 0.92);
+      backdrop-filter: blur(8px);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+      border-radius: 16px;
+    }
+    #gameover-screen h1 {
+      font-size: 32px;
+      font-weight: 900;
+      color: #ef4444;
+      text-shadow: 0 0 20px rgba(239, 68, 68, 0.6);
+      margin-bottom: 8px;
+    }
+    #gameover-screen p { color: #94a3b8; font-size: 15px; margin-bottom: 24px; }
+    #btn-restart {
+      background: linear-gradient(135deg, #0284c7, #38bdf8);
+      border: none;
+      color: #fff;
+      font-weight: 800;
+      font-size: 15px;
+      padding: 14px 32px;
+      border-radius: 30px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <div id="hud">
+      <div class="hud-box">
+        SCORE
+        <div class="hud-val" id="score-txt">0</div>
+      </div>
+      <div class="hud-box">
+        NEXT
+        <div id="next-preview"></div>
+      </div>
+      <div class="hud-box">
+        BEST
+        <div class="hud-val" id="best-txt">0</div>
+      </div>
+    </div>
+
+    <canvas id="canvas" width="360" height="540"></canvas>
+
+    <div id="footer-bar">
+      <button class="action-btn" id="btn-quake" disabled>⚡ Quake (0%)</button>
+    </div>
+
+    <div id="gameover-screen">
+      <h1>OVERFLOW!</h1>
+      <p>Final Score: <span id="final-score">0</span></p>
+      <button id="btn-restart">PLAY AGAIN</button>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+      const scoreTxt = document.getElementById('score-txt');
+      const bestTxt = document.getElementById('best-txt');
+      const nextPreview = document.getElementById('next-preview');
+      const btnQuake = document.getElementById('btn-quake');
+      const gameOverScreen = document.getElementById('gameover-screen');
+      const finalScoreTxt = document.getElementById('final-score');
+      const btnRestart = document.getElementById('btn-restart');
+
+      let bestScore = 0;
+      try {
+        bestScore = parseInt(localStorage.getItem('neon_fusion_best') || '0');
+      } catch(e) {}
+      bestTxt.innerText = bestScore;
+
+      // Safe Audio Synthesizer
+      const SoundFX = {
+        ctx: null,
+        init() {
+          if (!this.ctx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) this.ctx = new AudioCtx();
+          }
+          if (this.ctx && this.ctx.state === 'suspended') {
+            this.ctx.resume();
+          }
+        },
+        playTone(freq, type = 'sine', duration = 0.2, gainVol = 0.25) {
+          try {
+            this.init();
+            if (!this.ctx) return;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+            gain.gain.setValueAtTime(gainVol, this.ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start();
+            osc.stop(this.ctx.currentTime + duration);
+          } catch(e) {}
+        },
+        playMergeChord(tier, combo) {
+          const notes = [261.6, 293.7, 329.6, 392.0, 440.0, 523.3, 587.3, 659.3, 784.0, 880.0, 1046.5];
+          const base = notes[tier % notes.length];
+          this.playTone(base, 'triangle', 0.25, 0.3);
+          setTimeout(() => this.playTone(base * 1.25, 'sine', 0.2, 0.2), 40);
+          if (combo > 1) {
+            setTimeout(() => this.playTone(base * 1.5, 'sine', 0.25, 0.25), 80);
+          }
+        },
+        playExplode() {
+          this.playTone(80, 'sawtooth', 0.4, 0.4);
+          this.playTone(45, 'triangle', 0.5, 0.5);
+        },
+        playQuake() {
+          for (let i = 0; i < 4; i++) {
+            setTimeout(() => this.playTone(55 + Math.random() * 30, 'square', 0.15, 0.2), i * 60);
+          }
+        }
+      };
+
+      const TIERS = [
+        { val: 2, r: 16, color: '#38bdf8' },
+        { val: 4, r: 20, color: '#4ade80' },
+        { val: 8, r: 25, color: '#fbbf24' },
+        { val: 16, r: 30, color: '#fb7185' },
+        { val: 32, r: 35, color: '#c084fc' },
+        { val: 64, r: 41, color: '#f43f5e' },
+        { val: 128, r: 47, color: '#06b6d4' },
+        { val: 256, r: 53, color: '#e879f9' },
+        { val: 512, r: 59, color: '#f97316' },
+        { val: 1024, r: 65, color: '#3b82f6' },
+        { val: 2048, r: 72, color: '#facc15' }
+      ];
+
+      let score = 0;
+      let combo = 1;
+      let comboTimer = 0;
+      let quakeCharge = 0;
+      let screenShake = 0;
+      let balls = [];
+      let particles = [];
+      let floatingTexts = [];
+      let dropX = canvas.width / 2;
+      let nextTier = 0;
+      let isGameOver = false;
+      let overflowTimer = 0;
+      const CEILING_Y = 85;
+
+      const BUMPERS = [
+        { x: 80, y: 220, r: 10, lit: 0 },
+        { x: 280, y: 220, r: 10, lit: 0 },
+        { x: 180, y: 310, r: 12, lit: 0 }
+      ];
+
+      function pickNextTier() {
+        const rand = Math.random();
+        if (rand < 0.04) return 'bomb';
+        if (rand < 0.08) return 'rainbow';
+        return Math.floor(Math.random() * 3);
+      }
+
+      function updatePreview() {
+        if (nextTier === 'bomb') {
+          nextPreview.style.background = '#ef4444';
+          nextPreview.style.color = '#ef4444';
+        } else if (nextTier === 'rainbow') {
+          nextPreview.style.background = 'linear-gradient(45deg, #f43f5e, #38bdf8)';
+          nextPreview.style.color = '#fff';
+        } else {
+          const t = TIERS[nextTier];
+          nextPreview.style.background = t.color;
+          nextPreview.style.color = t.color;
+        }
+      }
+
+      nextTier = pickNextTier();
+      updatePreview();
+
+      class Ball {
+        constructor(x, y, tier) {
+          this.x = x;
+          this.y = y;
+          this.tier = tier;
+          this.vx = (Math.random() - 0.5) * 1.5;
+          this.vy = 0;
+
+          if (tier === 'bomb') {
+            this.radius = 24;
+            this.color = '#ef4444';
+            this.label = '💣';
+          } else if (tier === 'rainbow') {
+            this.radius = 26;
+            this.color = '#ffffff';
+            this.label = '★';
+          } else {
+            this.radius = TIERS[tier].r;
+            this.color = TIERS[tier].color;
+            this.label = TIERS[tier].val;
+          }
+        }
+
+        update() {
+          this.vy += 0.42;
+          this.x += this.vx;
+          this.y += this.vy;
+          this.vx *= 0.985;
+
+          if (this.y + this.radius > canvas.height) {
+            this.y = canvas.height - this.radius;
+            this.vy *= -0.32;
+            if (Math.abs(this.vy) < 0.5) this.vy = 0;
+          }
+
+          if (this.x - this.radius < 0) {
+            this.x = this.radius;
+            this.vx *= -0.6;
+          } else if (this.x + this.radius > canvas.width) {
+            this.x = canvas.width - this.radius;
+            this.vx *= -0.6;
+          }
+
+          BUMPERS.forEach(b => {
+            const dx = this.x - b.x;
+            const dy = this.y - b.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist < this.radius + b.r) {
+              const angle = Math.atan2(dy, dx);
+              this.vx = Math.cos(angle) * 7;
+              this.vy = Math.sin(angle) * 7;
+              b.lit = 1.0;
+              SoundFX.playTone(520, 'sine', 0.1, 0.2);
+              score += 10;
+              scoreTxt.innerText = score;
+            }
+          });
+        }
+
+        draw() {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+
+          if (this.tier === 'rainbow') {
+            const grad = ctx.createRadialGradient(this.x, this.y, 2, this.x, this.y, this.radius);
+            grad.addColorStop(0, '#ffffff');
+            grad.addColorStop(0.5, '#38bdf8');
+            grad.addColorStop(1, '#f43f5e');
+            ctx.fillStyle = grad;
+          } else {
+            ctx.fillStyle = this.color;
+          }
+
+          ctx.shadowColor = this.color;
+          ctx.shadowBlur = 14;
+          ctx.fill();
+          ctx.shadowBlur = 0;
+
+          ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          ctx.fillStyle = '#000';
+          ctx.font = '900 ' + (this.radius * 0.75) + 'px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(this.label, this.x, this.y);
+          ctx.restore();
+        }
+      }
+
+      function spawnSparks(x, y, color, count = 18) {
+        for (let i = 0; i < count; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = Math.random() * 8 + 2;
+          particles.push({
+            x, y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            alpha: 1.0,
+            color,
+            size: Math.random() * 4 + 2
+          });
+        }
+      }
+
+      function addFloatingText(x, y, text, color = '#38bdf8') {
+        floatingTexts.push({ x, y, text, color, alpha: 1.0 });
+      }
+
+      function handleCollisions() {
+        for (let i = 0; i < balls.length; i++) {
+          for (let j = i + 1; j < balls.length; j++) {
+            const b1 = balls[i];
+            const b2 = balls[j];
+            const dx = b2.x - b1.x;
+            const dy = b2.y - b1.y;
+            const dist = Math.hypot(dx, dy);
+            const minDist = b1.radius + b2.radius;
+
+            if (dist < minDist) {
+              if (b1.tier === 'bomb' || b2.tier === 'bomb') {
+                const bombIdx = b1.tier === 'bomb' ? i : j;
+                const bomb = balls[bombIdx];
+                triggerBomb(bomb.x, bomb.y, bombIdx);
+                return;
+              }
+
+              let canMerge = false;
+              let resultingTier = 0;
+
+              if (b1.tier === 'rainbow' && typeof b2.tier === 'number') {
+                canMerge = true;
+                resultingTier = Math.min(TIERS.length - 1, b2.tier + 1);
+              } else if (b2.tier === 'rainbow' && typeof b1.tier === 'number') {
+                canMerge = true;
+                resultingTier = Math.min(TIERS.length - 1, b1.tier + 1);
+              } else if (b1.tier === b2.tier && typeof b1.tier === 'number') {
+                canMerge = true;
+                resultingTier = Math.min(TIERS.length - 1, b1.tier + 1);
+              }
+
+              if (canMerge) {
+                const midX = (b1.x + b2.x) / 2;
+                const midY = (b1.y + b2.y) / 2;
+
+                spawnSparks(midX, midY, TIERS[resultingTier].color, 24);
+                balls.splice(j, 1);
+                balls.splice(i, 1);
+                balls.push(new Ball(midX, midY, resultingTier));
+
+                comboTimer = 110;
+                combo++;
+                const gained = TIERS[resultingTier].val * combo;
+                score += gained;
+                scoreTxt.innerText = score;
+                if (score > bestScore) {
+                  bestScore = score;
+                  bestTxt.innerText = bestScore;
+                  try { localStorage.setItem('neon_fusion_best', bestScore); } catch(e) {}
+                }
+
+                quakeCharge = Math.min(100, quakeCharge + 8);
+                btnQuake.innerText = `⚡ Quake (${quakeCharge}%)`;
+                if (quakeCharge >= 100) btnQuake.disabled = false;
+
+                screenShake = Math.min(16, 5 + combo * 2);
+                SoundFX.playMergeChord(resultingTier, combo);
+                if (navigator.vibrate) navigator.vibrate(25);
+
+                addFloatingText(midX, midY - 15, `+${gained} ${combo > 1 ? combo + 'x' : ''}`);
+                return;
+              }
+
+              const angle = Math.atan2(dy, dx);
+              const overlap = minDist - dist;
+              b1.x -= Math.cos(angle) * overlap * 0.5;
+              b1.y -= Math.sin(angle) * overlap * 0.5;
+              b2.x += Math.cos(angle) * overlap * 0.5;
+              b2.y += Math.sin(angle) * overlap * 0.5;
+
+              const normalX = dx / dist;
+              const normalY = dy / dist;
+              const kx = b1.vx - b2.vx;
+              const ky = b1.vy - b2.vy;
+              const p = 2 * (normalX * kx + normalY * ky) / 2;
+              b1.vx -= p * normalX * 0.7;
+              b1.vy -= p * normalY * 0.7;
+              b2.vx += p * normalX * 0.7;
+              b2.vy += p * normalY * 0.7;
+            }
+          }
+        }
+      }
+
+      function triggerBomb(x, y, bombIdx) {
+        balls.splice(bombIdx, 1);
+        spawnSparks(x, y, '#ef4444', 40);
+        screenShake = 22;
+        SoundFX.playExplode();
+        if (navigator.vibrate) navigator.vibrate([40, 30, 80]);
+
+        const BLAST_RAD = 110;
+        balls = balls.filter(b => {
+          const d = Math.hypot(b.x - x, b.y - y);
+          if (d < BLAST_RAD) {
+            spawnSparks(b.x, b.y, b.color, 10);
+            score += 100;
+            return false;
+          }
+          return true;
+        });
+        scoreTxt.innerText = score;
+        addFloatingText(x, y, 'BOOM! +100', '#ef4444');
+      }
+
+      // Robust Mobile Touch & Pointer System
+      function updateAim(e) {
+        const rect = canvas.getBoundingClientRect();
+        const clientX = e.clientX ?? (e.touches && e.touches[0] ? e.touches[0].clientX : dropX);
+        dropX = Math.max(30, Math.min(canvas.width - 30, (clientX - rect.left) * (canvas.width / rect.width)));
+      }
+
+      function dropBall() {
+        if (isGameOver) return;
+        if (balls.length < 32) {
+          balls.push(new Ball(dropX, 45, nextTier));
+          SoundFX.playTone(320, 'sine', 0.12, 0.2);
+          nextTier = pickNextTier();
+          updatePreview();
+        }
+      }
+
+      canvas.addEventListener('pointerdown', (e) => {
+        updateAim(e);
+        dropBall();
+      });
+
+      canvas.addEventListener('pointermove', (e) => {
+        updateAim(e);
+      });
+
+      // Earthquake button
+      btnQuake.addEventListener('click', () => {
+        if (quakeCharge < 100) return;
+        quakeCharge = 0;
+        btnQuake.disabled = true;
+        btnQuake.innerText = `⚡ Quake (0%)`;
+        screenShake = 25;
+        SoundFX.playQuake();
+        if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
+
+        balls.forEach(b => {
+          b.vy = -(Math.random() * 8 + 4);
+          b.vx = (Math.random() - 0.5) * 12;
+        });
+        addFloatingText(canvas.width / 2, canvas.height / 2, 'EARTHQUAKE!', '#facc15');
+      });
+
+      // Restart
+      btnRestart.addEventListener('click', () => {
+        balls = [];
+        particles = [];
+        floatingTexts = [];
+        score = 0;
+        combo = 1;
+        quakeCharge = 0;
+        scoreTxt.innerText = '0';
+        btnQuake.innerText = `⚡ Quake (0%)`;
+        btnQuake.disabled = true;
+        isGameOver = false;
+        overflowTimer = 0;
+        gameOverScreen.style.display = 'none';
+      });
+
+      // Spawn an initial ball so the playfield is never empty
+      balls.push(new Ball(canvas.width / 2, 45, 0));
+
+      // Game Loop
+      function loop() {
+        if (screenShake > 0) {
+          ctx.setTransform(1, 0, 0, 1, (Math.random() - 0.5) * screenShake, (Math.random() - 0.5) * screenShake);
+          screenShake *= 0.88;
+          if (screenShake < 0.4) ctx.setTransform(1, 0, 0, 1, 0, 0);
+        }
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Ceiling danger line
+        ctx.strokeStyle = overflowTimer > 30 ? '#ef4444' : 'rgba(239, 68, 68, 0.35)';
+        ctx.lineWidth = overflowTimer > 30 ? 3 : 1.5;
+        ctx.setLineDash([6, 6]);
+        ctx.beginPath();
+        ctx.moveTo(0, CEILING_Y);
+        ctx.lineTo(canvas.width, CEILING_Y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Aim guide
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.35)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(dropX, 45);
+        ctx.lineTo(dropX, canvas.height);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Draw Bumpers
+        BUMPERS.forEach(b => {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+          ctx.fillStyle = b.lit > 0 ? '#38bdf8' : '#1e293b';
+          ctx.shadowColor = '#38bdf8';
+          ctx.shadowBlur = b.lit > 0 ? 18 : 0;
+          ctx.fill();
+          ctx.strokeStyle = '#38bdf8';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          ctx.restore();
+          if (b.lit > 0) b.lit -= 0.04;
+        });
+
+        // Balls
+        let isOverflowing = false;
+        balls.forEach(b => {
+          b.update();
+          b.draw();
+          if (b.y - b.radius < CEILING_Y && Math.abs(b.vy) < 0.8) {
+            isOverflowing = true;
+          }
+        });
+
+        if (isOverflowing) {
+          overflowTimer++;
+          if (overflowTimer > 150 && !isGameOver) {
+            isGameOver = true;
+            finalScoreTxt.innerText = score;
+            gameOverScreen.style.display = 'flex';
+            SoundFX.playExplode();
+          }
+        } else {
+          overflowTimer = Math.max(0, overflowTimer - 1);
+        }
+
+        handleCollisions();
+
+        // Particles
+        particles.forEach((p, idx
