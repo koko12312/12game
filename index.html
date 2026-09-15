@@ -3,387 +3,501 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Power Wash 3D</title>
+  <title>PowerWash 3D Simulator</title>
   <style>
     * { box-sizing: border-box; touch-action: none; user-select: none; margin: 0; padding: 0; }
-    body { background: #1a1a24; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+    body { background: #0b0f19; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     #canvas3d { width: 100vw; height: 100vh; display: block; }
     
     /* Crosshair */
-    #crosshair {
-      position: absolute; top: 50%; left: 50%; width: 16px; height: 16px;
+    #reticle {
+      position: absolute; top: 50%; left: 50%; width: 22px; height: 22px;
       transform: translate(-50%, -50%); pointer-events: none;
     }
-    #crosshair::before, #crosshair::after {
-      content: ''; position: absolute; background: rgba(255, 255, 255, 0.8);
+    .reticle-ring {
+      width: 100%; height: 100%; border: 2px solid rgba(255, 255, 255, 0.7);
+      border-radius: 50%; box-shadow: 0 0 6px rgba(0,0,0,0.5);
     }
-    #crosshair::before { top: 7px; left: 0; width: 16px; height: 2px; }
-    #crosshair::after { top: 0; left: 7px; width: 2px; height: 16px; }
+    .reticle-dot {
+      position: absolute; top: 50%; left: 50%; width: 4px; height: 4px;
+      background: #38bdf8; border-radius: 50%; transform: translate(-50%, -50%);
+    }
 
-    /* UI Overlay */
+    /* HUD Top Bar */
     #hud {
-      position: absolute; top: 16px; left: 16px; right: 16px;
+      position: absolute; top: 12px; left: 12px; right: 12px;
       display: flex; justify-content: space-between; align-items: center;
-      pointer-events: none;
+      pointer-events: none; z-index: 10;
     }
-    .card {
-      background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(8px);
-      padding: 10px 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);
-      color: #fff; font-weight: bold; font-size: 14px;
+    .hud-card {
+      background: rgba(15, 23, 42, 0.82); backdrop-filter: blur(8px);
+      padding: 8px 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.12);
+      color: #fff; font-weight: 700; font-size: 13px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
     }
-    #progress-bar {
-      width: 140px; height: 10px; background: #334155; border-radius: 5px;
-      overflow: hidden; margin-top: 6px;
+    #prog-track {
+      width: 130px; height: 8px; background: #334155; border-radius: 4px;
+      overflow: hidden; margin-top: 5px;
     }
-    #progress-fill { width: 0%; height: 100%; background: #38bdf8; transition: width 0.2s; }
+    #prog-bar { width: 0%; height: 100%; background: linear-gradient(90deg, #0284c7, #38bdf8); transition: width 0.15s; }
 
-    /* Controls */
-    #controls {
-      position: absolute; bottom: 24px; left: 0; right: 0;
-      display: flex; justify-content: space-around; align-items: center;
-      padding: 0 20px; pointer-events: none;
+    /* Bottom Control Cockpit */
+    #toolbar {
+      position: absolute; bottom: 20px; left: 16px; right: 16px;
+      display: flex; justify-content: space-between; align-items: flex-end;
+      pointer-events: none; z-index: 10;
     }
+    .ctrl-col { display: flex; flex-direction: column; gap: 10px; pointer-events: auto; }
+    
     .btn {
-      pointer-events: auto; border: none; outline: none; font-weight: bold;
-      border-radius: 50px; color: white; cursor: pointer;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.3); transition: transform 0.1s;
+      border: none; outline: none; font-weight: 800; border-radius: 12px;
+      color: #fff; cursor: pointer; text-transform: uppercase;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4); transition: transform 0.08s, filter 0.1s;
     }
     .btn:active { transform: scale(0.92); }
-    #spray-btn {
-      width: 84px; height: 84px; border-radius: 50%;
-      background: radial-gradient(circle, #0284c7, #0369a1);
-      border: 3px solid #38bdf8; font-size: 14px;
+    
+    #btn-flash {
+      background: #d97706; padding: 10px 14px; font-size: 11px;
+      border: 1px solid #f59e0b;
     }
-    #nozzle-btn {
-      padding: 12px 20px; background: #334155; border: 1px solid #64748b; font-size: 12px;
+    #btn-nozzle {
+      background: #1e293b; padding: 12px 16px; font-size: 12px;
+      border: 2px solid #ef4444; border-left-width: 8px;
+    }
+    #btn-wash {
+      width: 86px; height: 86px; border-radius: 50%;
+      background: radial-gradient(circle, #0284c7, #075985);
+      border: 3px solid #7dd3fc; font-size: 14px; line-height: 1.1;
+      display: flex; align-items: center; justify-content: center; text-align: center;
+      box-shadow: 0 0 20px rgba(2, 132, 199, 0.5);
     }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
-  <div id="crosshair"></div>
+  <div id="reticle"><div class="reticle-ring"></div><div class="reticle-dot"></div></div>
+  
   <div id="hud">
-    <div class="card">
-      CLEANED
-      <div id="progress-bar"><div id="progress-fill"></div></div>
+    <div class="hud-card">
+      DIRT REMOVED
+      <div id="prog-track"><div id="prog-bar"></div></div>
     </div>
-    <div class="card" id="clean-percent">0%</div>
+    <div class="hud-card" id="txt-percent">0%</div>
   </div>
 
-  <div id="controls">
-    <button class="btn" id="nozzle-btn">NOZZLE: 15°</button>
-    <button class="btn" id="spray-btn">HOLD<br>WASH</button>
+  <div id="toolbar">
+    <div class="ctrl-col">
+      <button class="btn" id="btn-flash">⚡ Flash Dirt</button>
+      <button class="btn" id="btn-nozzle">Nozzle: 0°</button>
+    </div>
+    <button class="btn" id="btn-wash">HOLD<br>WASH</button>
   </div>
 
   <canvas id="canvas3d"></canvas>
 
   <script>
-    // --- Audio Engine (Synthesized High-Pressure Jet) ---
+    // --- Dual Audio Synthesizer ---
     const AudioEngine = {
-      ctx: null, noise: null, filter: null, gain: null,
+      ctx: null, pumpOsc: null, pumpGain: null,
+      noiseSource: null, noiseFilter: null, noiseGain: null,
       init() {
         this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-        const bufferSize = this.ctx.sampleRate * 2;
-        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
-        const data = buffer.getChannelData(0);
-        for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+        // 1. Motor Pump Hum (Low-end drone)
+        this.pumpOsc = this.ctx.createOscillator();
+        this.pumpOsc.type = 'sawtooth';
+        this.pumpOsc.frequency.value = 58;
+        this.pumpGain = this.ctx.createGain();
+        this.pumpGain.gain.value = 0.04;
+        const lowpass = this.ctx.createBiquadFilter();
+        lowpass.type = 'lowpass';
+        lowpass.frequency.value = 140;
+        this.pumpOsc.connect(lowpass);
+        lowpass.connect(this.pumpGain);
+        this.pumpGain.connect(this.ctx.destination);
+        this.pumpOsc.start();
 
-        this.noise = this.ctx.createBufferSource();
-        this.noise.buffer = buffer;
-        this.noise.loop = true;
+        // 2. High-Pressure Water Jet
+        const buf = this.ctx.createBuffer(1, this.ctx.sampleRate * 2, this.ctx.sampleRate);
+        const data = buf.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+        this.noiseSource = this.ctx.createBufferSource();
+        this.noiseSource.buffer = buf;
+        this.noiseSource.loop = true;
 
-        this.filter = this.ctx.createBiquadFilter();
-        this.filter.type = 'bandpass';
-        this.filter.frequency.value = 1200;
-        this.filter.Q.value = 1.8;
+        this.noiseFilter = this.ctx.createBiquadFilter();
+        this.noiseFilter.type = 'bandpass';
+        this.noiseFilter.frequency.value = 1400;
+        this.noiseFilter.Q.value = 1.6;
 
-        this.gain = this.ctx.createGain();
-        this.gain.gain.value = 0;
+        this.noiseGain = this.ctx.createGain();
+        this.noiseGain.gain.value = 0;
 
-        this.noise.connect(this.filter);
-        this.filter.connect(this.gain);
-        this.gain.connect(this.ctx.destination);
-        this.noise.start();
+        this.noiseSource.connect(this.noiseFilter);
+        this.noiseFilter.connect(this.noiseGain);
+        this.noiseGain.connect(this.ctx.destination);
+        this.noiseSource.start();
       },
-      setSpray(active, pressureMultiplier = 1) {
+      setSpray(active, pitchMult = 1.0) {
         if (!this.ctx) this.init();
         if (this.ctx.state === 'suspended') this.ctx.resume();
-        const targetGain = active ? 0.35 : 0;
-        this.filter.frequency.setValueAtTime(active ? 900 * pressureMultiplier : 300, this.ctx.currentTime);
-        this.gain.gain.setTargetAtTime(targetGain, this.ctx.currentTime, 0.05);
+        const target = active ? 0.38 : 0;
+        this.noiseFilter.frequency.setValueAtTime(active ? 1100 * pitchMult : 400, this.ctx.currentTime);
+        this.noiseGain.gain.setTargetAtTime(target, this.ctx.currentTime, 0.04);
+        this.pumpGain.gain.setTargetAtTime(active ? 0.09 : 0.03, this.ctx.currentTime, 0.08);
       },
-      ding() {
+      chime() {
         if (!this.ctx) this.init();
         const osc = this.ctx.createOscillator();
         const g = this.ctx.createGain();
-        osc.frequency.setValueAtTime(880, this.ctx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(1760, this.ctx.currentTime + 0.3);
-        g.gain.setValueAtTime(0.3, this.ctx.currentTime);
-        g.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.5);
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(523.25, this.ctx.currentTime);
+        osc.frequency.setValueAtTime(659.25, this.ctx.currentTime + 0.12);
+        osc.frequency.setValueAtTime(783.99, this.ctx.currentTime + 0.24);
+        g.gain.setValueAtTime(0.25, this.ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.8);
         osc.connect(g); g.connect(this.ctx.destination);
-        osc.start(); osc.stop(this.ctx.currentTime + 0.5);
+        osc.start(); osc.stop(this.ctx.currentTime + 0.8);
       }
     };
 
+    // --- Nozzle Registry ---
+    const NOZZLES = [
+      { name: "Nozzle: 0°", color: "#ef4444", radius: 18, force: 1.8, pitch: 1.5 },
+      { name: "Nozzle: 15°", color: "#eab308", radius: 36, force: 1.2, pitch: 1.2 },
+      { name: "Nozzle: 25°", color: "#22c55e", radius: 52, force: 0.9, pitch: 1.0 },
+      { name: "Nozzle: 40°", color: "#f8fafc", radius: 75, force: 0.6, pitch: 0.8 },
+      { name: "Soap Cannon", color: "#38bdf8", radius: 95, force: 0.4, pitch: 0.6, isSoap: true }
+    ];
+    let currentNozzleIdx = 0;
+
     // --- Three.js Setup ---
     const canvas = document.getElementById('canvas3d');
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.1;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#1e293b');
+    scene.background = new THREE.Color('#111827');
+    scene.fog = new THREE.FogExp2('#111827', 0.05);
 
-    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
-    camera.position.set(0, 1.5, 3.8);
+    const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.05, 50);
 
-    // Lights
-    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x334155, 0.8);
+    // Dynamic Lighting
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x1e293b, 0.7);
     scene.add(hemiLight);
-    const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
-    dirLight.position.set(5, 10, 7);
-    dirLight.castShadow = true;
-    scene.add(dirLight);
 
-    // Ground
-    const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(20, 20),
-      new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.9 })
+    const sun = new THREE.DirectionalLight(0xfffaed, 1.6);
+    sun.position.set(6, 12, 8);
+    sun.castShadow = true;
+    sun.shadow.mapSize.width = 1024;
+    sun.shadow.mapSize.height = 1024;
+    scene.add(sun);
+
+    // --- Procedural Textures & Environment ---
+    // Ground Patio
+    const patioCanvas = document.createElement('canvas');
+    patioCanvas.width = 256; patioCanvas.height = 256;
+    const pctx = patioCanvas.getContext('2d');
+    pctx.fillStyle = '#334155'; pctx.fillRect(0,0,256,256);
+    pctx.strokeStyle = '#1e293b'; pctx.lineWidth = 4;
+    for(let x = 0; x < 256; x += 64) {
+      for(let y = 0; y < 256; y += 64) {
+        pctx.strokeRect(x+2, y+2, 60, 60);
+      }
+    }
+    const patioTex = new THREE.CanvasTexture(patioCanvas);
+    patioTex.wrapS = THREE.RepeatWrapping; patioTex.wrapT = THREE.RepeatWrapping;
+    patioTex.repeat.set(12, 12);
+
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(30, 30),
+      new THREE.MeshStandardMaterial({ map: patioTex, roughness: 0.85 })
     );
-    ground.rotation.x = -Math.PI / 2;
-    ground.receiveShadow = true;
-    scene.add(ground);
+    floor.rotation.x = -Math.PI / 2;
+    floor.receiveShadow = true;
+    scene.add(floor);
 
-    // --- Dynamic Dirt Mask (The Core Cleaning Mechanic) ---
-    const TEX_SIZE = 1024;
+    // --- Dynamic Dirt Mask (Canvas-driven) ---
+    const TEX_RES = 1024;
     const dirtCanvas = document.createElement('canvas');
-    dirtCanvas.width = TEX_SIZE;
-    dirtCanvas.height = TEX_SIZE;
+    dirtCanvas.width = TEX_RES; dirtCanvas.height = TEX_RES;
     const dctx = dirtCanvas.getContext('2d');
 
-    // Fill initial dirt texture
-    dctx.fillStyle = '#3d2817';
-    dctx.fillRect(0, 0, TEX_SIZE, TEX_SIZE);
-    // Add grunge variation
-    for (let i = 0; i < 4000; i++) {
-      dctx.fillStyle = Math.random() > 0.5 ? '#27190d' : '#4a3320';
-      dctx.beginPath();
-      dctx.arc(Math.random() * TEX_SIZE, Math.random() * TEX_SIZE, Math.random() * 8 + 2, 0, Math.PI * 2);
-      dctx.fill();
+    let isFlashing = false;
+    function renderGrimeTexture(highlight = false) {
+      dctx.save();
+      dctx.fillStyle = highlight ? '#ff5500' : '#2b1a0d';
+      dctx.fillRect(0, 0, TEX_RES, TEX_RES);
+      if (!highlight) {
+        for (let i = 0; i < 5000; i++) {
+          dctx.fillStyle = Math.random() > 0.5 ? '#1a0f07' : '#3f2815';
+          dctx.beginPath();
+          dctx.arc(Math.random() * TEX_RES, Math.random() * TEX_RES, Math.random() * 6 + 2, 0, Math.PI * 2);
+          dctx.fill();
+        }
+      }
+      dctx.restore();
     }
+    renderGrimeTexture();
 
     const dirtTexture = new THREE.CanvasTexture(dirtCanvas);
     dirtTexture.needsUpdate = true;
 
-    // Target 3D Model: Vintage Retro Van
-    const vanGroup = new THREE.Group();
-    scene.add(vanGroup);
+    // --- Off-Road Vehicle Model Construction ---
+    const vehicleGroup = new THREE.Group();
+    scene.add(vehicleGroup);
 
-    const baseMaterial = new THREE.MeshStandardMaterial({
-      color: 0x0284c7, metalness: 0.2, roughness: 0.3
+    const bodyPaint = new THREE.MeshStandardMaterial({
+      color: 0x0284c7, metalness: 0.65, roughness: 0.22
+    });
+    const grimeMaterial = new THREE.MeshStandardMaterial({
+      map: dirtTexture, transparent: true, opacity: 0.98, roughness: 0.98, metalness: 0.05
     });
 
-    const dirtMaterial = new THREE.MeshStandardMaterial({
-      map: dirtTexture, transparent: true, opacity: 0.96, roughness: 0.95
+    // Clean Chassis Base
+    const chassis = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.9, 3.4), bodyPaint);
+    chassis.position.y = 0.85;
+    chassis.castShadow = true;
+    vehicleGroup.add(chassis);
+
+    // Grime Layer Shell (UV raycasted)
+    const grimeShell = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.9, 3.4), grimeMaterial);
+    grimeShell.position.copy(chassis.position);
+    grimeShell.scale.set(1.003, 1.003, 1.003);
+    vehicleGroup.add(grimeShell);
+
+    // Roll Cage (Tube frame)
+    const pipeMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4, metalness: 0.8 });
+    const rollBar1 = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.4), pipeMat);
+    rollBar1.position.set(-0.8, 1.7, 0.2); vehicleGroup.add(rollBar1);
+    const rollBar2 = rollBar1.clone(); rollBar2.position.x = 0.8; vehicleGroup.add(rollBar2);
+
+    const roofBar = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.6), pipeMat);
+    roofBar.rotation.z = Math.PI / 2; roofBar.position.set(0, 2.4, 0.2); vehicleGroup.add(roofBar);
+
+    // Wheels & Rim Hubs
+    const tireMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.9 });
+    const rimMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.8, roughness: 0.3 });
+    const tireGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.3, 24);
+    const rimGeo = new THREE.CylinderGeometry(0.24, 0.24, 0.32, 16);
+
+    const wheelLocs = [[-1.02, 0.42, 1.1], [1.02, 0.42, 1.1], [-1.02, 0.42, -1.1], [1.02, 0.42, -1.1]];
+    wheelLocs.forEach(([x, y, z]) => {
+      const tire = new THREE.Mesh(tireGeo, tireMat);
+      const rim = new THREE.Mesh(rimGeo, rimMat);
+      tire.rotation.z = Math.PI / 2; rim.rotation.z = Math.PI / 2;
+      tire.position.set(x, y, z); rim.position.set(x, y, z);
+      vehicleGroup.add(tire); vehicleGroup.add(rim);
     });
 
-    // Outer dirty shell geometry
-    const chassisGeo = new THREE.BoxGeometry(1.8, 1.2, 3.2);
-    const chassisClean = new THREE.Mesh(chassisGeo, baseMaterial);
-    chassisClean.position.y = 0.9;
-    chassisClean.castShadow = true;
-    vanGroup.add(chassisClean);
+    // --- First-Person Washer Wand Viewmodel ---
+    const wandGroup = new THREE.Group();
+    const wandBodyMat = new THREE.MeshStandardMaterial({ color: 0x111827, metalness: 0.5, roughness: 0.5 });
+    const wandMetalMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.9, roughness: 0.2 });
+    const nozzleTipMat = new THREE.MeshStandardMaterial({ color: 0xef4444, metalness: 0.4, roughness: 0.3 });
 
-    // Shell with dirt texture mapping
-    const chassisDirt = new THREE.Mesh(chassisGeo, dirtMaterial);
-    chassisDirt.position.copy(chassisClean.position);
-    chassisDirt.scale.set(1.002, 1.002, 1.002);
-    vanGroup.add(chassisDirt);
+    // Handle Grip & Lance
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.3), wandBodyMat);
+    grip.position.set(0.18, -0.2, -0.4); grip.rotation.x = 0.4; wandGroup.add(grip);
 
-    // Wheels
-    const wheelGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.25, 24);
-    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.8 });
-    const wheelPositions = [
-      [-0.95, 0.35, 1.0], [0.95, 0.35, 1.0],
-      [-0.95, 0.35, -1.0], [0.95, 0.35, -1.0]
-    ];
-    wheelPositions.forEach(([x, y, z]) => {
-      const wheel = new THREE.Mesh(wheelGeo, wheelMat);
-      wheel.rotation.z = Math.PI / 2;
-      wheel.position.set(x, y, z);
-      vanGroup.add(wheel);
+    const lance = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.6), wandMetalMat);
+    lance.rotation.x = Math.PI / 2; lance.position.set(0.18, -0.1, -0.7); wandGroup.add(lance);
+
+    const nozzleTip = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.015, 0.08), nozzleTipMat);
+    nozzleTip.rotation.x = Math.PI / 2; nozzleTip.position.set(0.18, -0.1, -1.0); wandGroup.add(nozzleTip);
+
+    camera.add(wandGroup);
+    scene.add(camera);
+
+    // --- High-Velocity Water Jet Particles ---
+    const STREAM_COUNT = 200;
+    const streamGeo = new THREE.BufferGeometry();
+    const streamPos = new Float32Array(STREAM_COUNT * 3);
+    streamGeo.setAttribute('position', new THREE.BufferAttribute(streamPos, 3));
+
+    const streamMat = new THREE.PointsMaterial({
+      color: 0xe0f2fe, size: 0.06, transparent: true, opacity: 0.85
     });
+    const streamSystem = new THREE.Points(streamGeo, streamMat);
+    scene.add(streamSystem);
 
-    // --- Water Spray Particle System ---
-    const PARTICLE_COUNT = 150;
-    const particleGeo = new THREE.BufferGeometry();
-    const particlePos = new Float32Array(PARTICLE_COUNT * 3);
-    particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePos, 3));
-
-    const particleMat = new THREE.PointsMaterial({
-      color: 0xbae6fd, size: 0.05, transparent: true, opacity: 0.75
-    });
-    const particleSystem = new THREE.Points(particleGeo, particleMat);
-    scene.add(particleSystem);
-
-    const particles = Array.from({ length: PARTICLE_COUNT }, () => ({
+    const particles = Array.from({ length: STREAM_COUNT }, () => ({
       x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, life: 0
     }));
 
-    // --- Input & Interaction ---
-    let isSpraying = false;
-    let nozzleMode = 0; // 0: 15° Fan, 1: 0° Needle
-    const nozzleConfigs = [
-      { name: 'NOZZLE: 15°', radius: 45, mult: 1.0 },
-      { name: 'NOZZLE: 0°', radius: 18, mult: 1.8 }
-    ];
-
-    const sprayBtn = document.getElementById('spray-btn');
-    const nozzleBtn = document.getElementById('nozzle-btn');
-    const percentEl = document.getElementById('clean-percent');
-    const progressFill = document.getElementById('progress-fill');
-
-    sprayBtn.addEventListener('pointerdown', (e) => {
-      e.stopPropagation();
-      isSpraying = true;
-      AudioEngine.setSpray(true, nozzleConfigs[nozzleMode].mult);
-    });
-    window.addEventListener('pointerup', () => {
-      if (isSpraying) {
-        isSpraying = false;
-        AudioEngine.setSpray(false);
-      }
-    });
-
-    nozzleBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      nozzleMode = (nozzleMode + 1) % nozzleConfigs.length;
-      nozzleBtn.innerText = nozzleConfigs[nozzleMode].name;
-    });
-
-    // Orbital camera touch rotation
-    let isDragging = false, lastX = 0, lastY = 0;
-    let spherical = { theta: 0, phi: Math.PI / 3, radius: 4.2 };
+    // --- Controls & Camera Orbit ---
+    let isWashing = false;
+    let cameraOrbit = { theta: 0.3, phi: 1.1, dist: 3.8 };
+    let dragStart = { x: 0, y: 0 };
+    let isDragging = false;
 
     window.addEventListener('pointerdown', (e) => {
       if (e.target.tagName === 'BUTTON') return;
       isDragging = true;
-      lastX = e.clientX;
-      lastY = e.clientY;
+      dragStart.x = e.clientX;
+      dragStart.y = e.clientY;
     });
+
     window.addEventListener('pointermove', (e) => {
       if (!isDragging) return;
-      const dx = (e.clientX - lastX) * 0.006;
-      const dy = (e.clientY - lastY) * 0.006;
-      spherical.theta -= dx;
-      spherical.phi = Math.max(0.2, Math.min(Math.PI / 2.1, spherical.phi - dy));
-      lastX = e.clientX;
-      lastY = e.clientY;
+      const dx = (e.clientX - dragStart.x) * 0.0055;
+      const dy = (e.clientY - dragStart.y) * 0.0055;
+      cameraOrbit.theta -= dx;
+      cameraOrbit.phi = Math.max(0.2, Math.min(Math.PI / 2.05, cameraOrbit.phi - dy));
+      dragStart.x = e.clientX;
+      dragStart.y = e.clientY;
     });
-    window.addEventListener('pointercancel', () => isDragging = false);
+    window.addEventListener('pointerup', () => isDragging = false);
 
-    // --- Raycasting UV Cleaning System ---
+    // Wash Activation with Vibration
+    const washBtn = document.getElementById('btn-wash');
+    washBtn.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      isWashing = true;
+      AudioEngine.setSpray(true, NOZZLES[currentNozzleIdx].pitch);
+    });
+    window.addEventListener('pointerup', () => {
+      if (isWashing) {
+        isWashing = false;
+        AudioEngine.setSpray(false);
+      }
+    });
+
+    // Nozzle Switcher
+    const nozzleBtn = document.getElementById('btn-nozzle');
+    nozzleBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      currentNozzleIdx = (currentNozzleIdx + 1) % NOZZLES.length;
+      const n = NOZZLES[currentNozzleIdx];
+      nozzleBtn.innerText = n.name;
+      nozzleBtn.style.borderColor = n.color;
+      nozzleTipMat.color.set(n.color);
+      if (isWashing) AudioEngine.setSpray(true, n.pitch);
+    });
+
+    // Flash Dirt Button
+    const flashBtn = document.getElementById('btn-flash');
+    flashBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      isFlashing = !isFlashing;
+      flashBtn.innerText = isFlashing ? "Reset View" : "⚡ Flash Dirt";
+      flashBtn.style.background = isFlashing ? "#0284c7" : "#d97706";
+      dctx.save();
+      dctx.globalCompositeOperation = 'source-in';
+      dctx.fillStyle = isFlashing ? '#ff3b00' : '#2b1a0d';
+      dctx.fillRect(0, 0, TEX_RES, TEX_RES);
+      dctx.restore();
+      dirtTexture.needsUpdate = true;
+    });
+
+    // --- Dynamic Raycast Dirt Peeling ---
     const raycaster = new THREE.Raycaster();
     const screenCenter = new THREE.Vector2(0, 0);
     let cleanedPixels = 0;
-    let cleanPct = 0;
+    const TOTAL_PIXELS_ESTIMATE = TEX_RES * TEX_RES * 0.42;
 
-    function cleanSurface() {
+    function peelDirt() {
       raycaster.setFromCamera(screenCenter, camera);
-      const intersects = raycaster.intersectObject(chassisDirt);
+      const hits = raycaster.intersectObject(grimeShell);
 
-      if (intersects.length > 0) {
-        const hit = intersects[0];
+      if (hits.length > 0) {
+        const hit = hits[0];
+        const dist = hit.distance;
+        // Distance Falloff: Close proximity cleans faster
+        const distFactor = Math.max(0.3, Math.min(2.0, 3.5 / dist));
+        const nozzle = NOZZLES[currentNozzleIdx];
+        const effRadius = nozzle.radius * distFactor;
+
         if (hit.uv) {
-          const uvX = hit.uv.x * TEX_SIZE;
-          const uvY = (1 - hit.uv.y) * TEX_SIZE;
-          const rad = nozzleConfigs[nozzleMode].radius;
+          const uvX = hit.uv.x * TEX_RES;
+          const uvY = (1 - hit.uv.y) * TEX_RES;
 
-          // Strip dirt layer using canvas destination-out blend
           dctx.save();
           dctx.globalCompositeOperation = 'destination-out';
-          const grad = dctx.createRadialGradient(uvX, uvY, 2, uvX, uvY, rad);
+          const grad = dctx.createRadialGradient(uvX, uvY, 1, uvX, uvY, effRadius);
           grad.addColorStop(0, 'rgba(0,0,0,1)');
-          grad.addColorStop(0.7, 'rgba(0,0,0,0.8)');
+          grad.addColorStop(0.7, 'rgba(0,0,0,0.85)');
           grad.addColorStop(1, 'rgba(0,0,0,0)');
           dctx.fillStyle = grad;
           dctx.beginPath();
-          dctx.arc(uvX, uvY, rad, 0, Math.PI * 2);
+          dctx.arc(uvX, uvY, effRadius, 0, Math.PI * 2);
           dctx.fill();
           dctx.restore();
 
           dirtTexture.needsUpdate = true;
-          cleanedPixels += rad * 1.5;
+          cleanedPixels += effRadius * nozzle.force;
 
-          // Update progression
-          const totalAreaEst = TEX_SIZE * TEX_SIZE * 0.45;
-          cleanPct = Math.min(100, Math.floor((cleanedPixels / totalAreaEst) * 100));
-          percentEl.innerText = cleanPct + '%';
-          progressFill.style.width = cleanPct + '%';
-          if (cleanPct === 100) AudioEngine.ding();
+          // Mobile Haptic pulse
+          if (window.navigator && window.navigator.vibrate) {
+            window.navigator.vibrate(18);
+          }
+
+          // Progress calculation
+          const pct = Math.min(100, Math.floor((cleanedPixels / TOTAL_PIXELS_ESTIMATE) * 100));
+          document.getElementById('txt-percent').innerText = pct + '%';
+          document.getElementById('prog-bar').style.width = pct + '%';
+          if (pct === 100) AudioEngine.chime();
         }
       }
     }
 
     // --- Game Loop ---
     const clock = new THREE.Clock();
-    function animate() {
-      requestAnimationFrame(animate);
-      const delta = clock.getDelta();
+    function render() {
+      requestAnimationFrame(render);
+      const dt = clock.getDelta();
 
-      // Camera positioning
-      camera.position.x = spherical.radius * Math.sin(spherical.phi) * Math.sin(spherical.theta);
-      camera.position.y = spherical.radius * Math.cos(spherical.phi);
-      camera.position.z = spherical.radius * Math.sin(spherical.phi) * Math.cos(spherical.theta);
+      // Camera Orbit Position
+      camera.position.x = cameraOrbit.dist * Math.sin(cameraOrbit.phi) * Math.sin(cameraOrbit.theta);
+      camera.position.y = cameraOrbit.dist * Math.cos(cameraOrbit.phi);
+      camera.position.z = cameraOrbit.dist * Math.sin(cameraOrbit.phi) * Math.cos(cameraOrbit.theta);
       camera.lookAt(0, 0.8, 0);
 
-      // Washing & Particle emission
-      if (isSpraying) {
-        cleanSurface();
-        for (let i = 0; i < 4; i++) {
+      // Wand Sway & Recoil
+      if (isWashing) {
+        wandGroup.position.z = -0.05 + Math.random() * 0.02; // Recoil jitter
+        peelDirt();
+
+        // Spawn Jet Spray
+        for (let k = 0; k < 5; k++) {
           const p = particles.find(pt => pt.life <= 0);
           if (p) {
-            p.life = 1.0;
-            // Spawn from bottom right wand
-            p.x = camera.position.x + 0.3 * Math.cos(spherical.theta + 1.2);
-            p.y = camera.position.y - 0.2;
-            p.z = camera.position.z + 0.3 * Math.sin(spherical.theta + 1.2);
-            // Fire toward center crosshair
-            p.vx = -p.x * 2.5 + (Math.random() - 0.5) * 0.2;
-            p.vy = (0.8 - p.y) * 2.5 + (Math.random() - 0.5) * 0.2;
-            p.vz = -p.z * 2.5 + (Math.random() - 0.5) * 0.2;
+            p.life = 0.8;
+            p.x = camera.position.x + 0.22 * Math.cos(cameraOrbit.theta + 0.8);
+            p.y = camera.position.y - 0.12;
+            p.z = camera.position.z + 0.22 * Math.sin(cameraOrbit.theta + 0.8);
+            p.vx = -p.x * 2.8 + (Math.random() - 0.5) * 0.3;
+            p.vy = (0.8 - p.y) * 2.8 + (Math.random() - 0.5) * 0.3;
+            p.vz = -p.z * 2.8 + (Math.random() - 0.5) * 0.3;
           }
         }
+      } else {
+        wandGroup.position.z = 0; // Return to idle
       }
 
-      // Update particle physics
-      const pArray = particleGeo.attributes.position.array;
-      for (let i = 0; i < PARTICLE_COUNT; i++) {
+      // Update Water Stream
+      const posArr = streamGeo.attributes.position.array;
+      for (let i = 0; i < STREAM_COUNT; i++) {
         const pt = particles[i];
         if (pt.life > 0) {
-          pt.x += pt.vx * delta;
-          pt.y += pt.vy * delta;
-          pt.z += pt.vz * delta;
-          pt.life -= delta * 3.5;
+          pt.x += pt.vx * dt;
+          pt.y += pt.vy * dt;
+          pt.z += pt.vz * dt;
+          pt.life -= dt * 4;
         } else {
           pt.y = -100;
         }
-        pArray[i * 3] = pt.x;
-        pArray[i * 3 + 1] = pt.y;
-        pArray[i * 3 + 2] = pt.z;
+        posArr[i * 3] = pt.x;
+        posArr[i * 3 + 1] = pt.y;
+        posArr[i * 3 + 2] = pt.z;
       }
-      particleGeo.attributes.position.needsUpdate = true;
+      streamGeo.attributes.position.needsUpdate = true;
 
       renderer.render(scene, camera);
     }
-    animate();
+    render();
 
-    window.addEventListener('resize', () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-    });
-  </script>
-</body>
-</html>
+    window.addEventListener('resize', ()
