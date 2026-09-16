@@ -3,632 +3,485 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Neon Fusion Deluxe</title>
+  <title>PowerWash 3D Simulator</title>
   <style>
     * { box-sizing: border-box; touch-action: none; user-select: none; margin: 0; padding: 0; }
-    body {
-      background: #080a14;
-      color: #fff;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      overflow: hidden;
-    }
-    #game-container {
-      position: relative;
-      width: 100%;
-      max-width: 400px;
-      height: 100%;
-      max-height: 700px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }
-    #hud {
-      width: 92%;
-      padding: 10px 0;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      z-index: 10;
-    }
-    .hud-box {
-      background: rgba(18, 24, 43, 0.85);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 12px;
-      padding: 6px 14px;
-      font-size: 11px;
-      font-weight: 800;
-      letter-spacing: 1px;
-      color: #94a3b8;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-    }
-    .hud-val {
-      font-size: 18px;
-      color: #38bdf8;
-      font-weight: 900;
-      margin-top: 2px;
-    }
-    #next-preview {
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      margin-top: 4px;
-      box-shadow: 0 0 10px currentColor;
-    }
-    canvas {
-      background: #0e1222;
-      border-radius: 16px;
-      border: 2px solid #1e293b;
-      box-shadow: 0 0 35px rgba(56, 189, 248, 0.15);
-      flex: 1;
-      width: 92%;
-      max-height: 560px;
-    }
-    #footer-bar {
-      width: 92%;
-      padding: 8px 0;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 10px;
-    }
-    .action-btn {
-      flex: 1;
-      background: #1e293b;
-      border: 1px solid #38bdf8;
-      color: #38bdf8;
-      font-weight: 800;
-      font-size: 12px;
-      padding: 10px 0;
-      border-radius: 10px;
-      cursor: pointer;
-      text-transform: uppercase;
-      transition: transform 0.1s;
-    }
-    .action-btn:active { transform: scale(0.95); }
-    .action-btn:disabled { opacity: 0.35; border-color: #475569; color: #64748b; }
+    body { background: #0b0f19; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    #canvas3d { width: 100vw; height: 100vh; display: block; }
     
-    #gameover-screen {
-      position: absolute;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(8, 10, 20, 0.92);
-      backdrop-filter: blur(8px);
-      display: none;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      z-index: 50;
-      border-radius: 16px;
+    /* Loading / Error Banner */
+    #loader {
+      position: absolute; inset: 0; background: #0b0f19; z-index: 100;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      color: #38bdf8; font-weight: bold; font-size: 16px;
     }
-    #gameover-screen h1 {
-      font-size: 32px;
-      font-weight: 900;
-      color: #ef4444;
-      text-shadow: 0 0 20px rgba(239, 68, 68, 0.6);
-      margin-bottom: 8px;
+    .spinner {
+      width: 40px; height: 40px; border: 4px solid #1e293b; border-top: 4px solid #38bdf8;
+      border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 16px;
     }
-    #gameover-screen p { color: #94a3b8; font-size: 15px; margin-bottom: 24px; }
-    #btn-restart {
-      background: linear-gradient(135deg, #0284c7, #38bdf8);
-      border: none;
-      color: #fff;
-      font-weight: 800;
-      font-size: 15px;
-      padding: 14px 32px;
-      border-radius: 30px;
-      cursor: pointer;
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+
+    /* Crosshair */
+    #reticle {
+      position: absolute; top: 50%; left: 50%; width: 22px; height: 22px;
+      transform: translate(-50%, -50%); pointer-events: none; z-index: 10;
+    }
+    .reticle-ring {
+      width: 100%; height: 100%; border: 2px solid rgba(255, 255, 255, 0.7);
+      border-radius: 50%; box-shadow: 0 0 6px rgba(0,0,0,0.5);
+    }
+    .reticle-dot {
+      position: absolute; top: 50%; left: 50%; width: 4px; height: 4px;
+      background: #38bdf8; border-radius: 50%; transform: translate(-50%, -50%);
+    }
+
+    /* HUD Top Bar */
+    #hud {
+      position: absolute; top: 12px; left: 12px; right: 12px;
+      display: flex; justify-content: space-between; align-items: center;
+      pointer-events: none; z-index: 10;
+    }
+    .hud-card {
+      background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px);
+      padding: 8px 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.12);
+      color: #fff; font-weight: 700; font-size: 13px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    }
+    #prog-track {
+      width: 130px; height: 8px; background: #334155; border-radius: 4px;
+      overflow: hidden; margin-top: 5px;
+    }
+    #prog-bar { width: 0%; height: 100%; background: linear-gradient(90deg, #0284c7, #38bdf8); transition: width 0.15s; }
+
+    /* Bottom Control Cockpit */
+    #toolbar {
+      position: absolute; bottom: 20px; left: 16px; right: 16px;
+      display: flex; justify-content: space-between; align-items: flex-end;
+      pointer-events: none; z-index: 10;
+    }
+    .ctrl-col { display: flex; flex-direction: column; gap: 10px; pointer-events: auto; }
+    
+    .btn {
+      border: none; outline: none; font-weight: 800; border-radius: 12px;
+      color: #fff; cursor: pointer; text-transform: uppercase;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4); transition: transform 0.08s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn:active { transform: scale(0.92); }
+    
+    #btn-flash {
+      background: #d97706; padding: 10px 14px; font-size: 11px;
+      border: 1px solid #f59e0b;
+    }
+    #btn-nozzle {
+      background: #1e293b; padding: 12px 16px; font-size: 12px;
+      border: 2px solid #ef4444; border-left-width: 8px;
+    }
+    #btn-wash {
+      pointer-events: auto; width: 86px; height: 86px; border-radius: 50%;
+      background: radial-gradient(circle, #0284c7, #075985);
+      border: 3px solid #7dd3fc; font-size: 14px; line-height: 1.1;
+      display: flex; align-items: center; justify-content: center; text-align: center;
+      box-shadow: 0 0 20px rgba(2, 132, 199, 0.5);
     }
   </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
-  <div id="game-container">
-    <div id="hud">
-      <div class="hud-box">
-        SCORE
-        <div class="hud-val" id="score-txt">0</div>
-      </div>
-      <div class="hud-box">
-        NEXT
-        <div id="next-preview"></div>
-      </div>
-      <div class="hud-box">
-        BEST
-        <div class="hud-val" id="best-txt">0</div>
-      </div>
+  <div id="loader"><div class="spinner"></div><span>INITIALIZING WASHER...</span></div>
+  <div id="reticle"><div class="reticle-ring"></div><div class="reticle-dot"></div></div>
+  
+  <div id="hud">
+    <div class="hud-card">
+      DIRT REMOVED
+      <div id="prog-track"><div id="prog-bar"></div></div>
     </div>
-
-    <canvas id="canvas" width="360" height="540"></canvas>
-
-    <div id="footer-bar">
-      <button class="action-btn" id="btn-quake" disabled>⚡ Quake (0%)</button>
-    </div>
-
-    <div id="gameover-screen">
-      <h1>OVERFLOW!</h1>
-      <p>Final Score: <span id="final-score">0</span></p>
-      <button id="btn-restart">PLAY AGAIN</button>
-    </div>
+    <div class="hud-card" id="txt-percent">0%</div>
   </div>
 
+  <div id="toolbar">
+    <div class="ctrl-col">
+      <button class="btn" id="btn-flash">⚡ Flash Dirt</button>
+      <button class="btn" id="btn-nozzle">Nozzle: 0°</button>
+    </div>
+    <button class="btn" id="btn-wash">HOLD<br>WASH</button>
+  </div>
+
+  <canvas id="canvas3d"></canvas>
+
   <script>
-    (function() {
-      const canvas = document.getElementById('canvas');
-      const ctx = canvas.getContext('2d');
-      const scoreTxt = document.getElementById('score-txt');
-      const bestTxt = document.getElementById('best-txt');
-      const nextPreview = document.getElementById('next-preview');
-      const btnQuake = document.getElementById('btn-quake');
-      const gameOverScreen = document.getElementById('gameover-screen');
-      const finalScoreTxt = document.getElementById('final-score');
-      const btnRestart = document.getElementById('btn-restart');
+    window.addEventListener('load', () => {
+      const loader = document.getElementById('loader');
+      if (typeof THREE === 'undefined') {
+        loader.innerHTML = '<span style="color:#ef4444;text-align:center;padding:20px;">WebGL Engine failed to load.<br>Ensure an internet connection exists on first boot.</span>';
+        return;
+      }
+      initGame();
+      loader.style.display = 'none';
+    });
 
-      let bestScore = 0;
-      try {
-        bestScore = parseInt(localStorage.getItem('neon_fusion_best') || '0');
-      } catch(e) {}
-      bestTxt.innerText = bestScore;
-
-      // Safe Audio Synthesizer
-      const SoundFX = {
-        ctx: null,
+    function initGame() {
+      // Safe Sound Engine
+      const AudioEngine = {
+        ctx: null, pumpOsc: null, pumpGain: null,
+        noiseSource: null, noiseFilter: null, noiseGain: null,
         init() {
-          if (!this.ctx) {
+          try {
+            if (this.ctx) return;
             const AudioCtx = window.AudioContext || window.webkitAudioContext;
-            if (AudioCtx) this.ctx = new AudioCtx();
-          }
-          if (this.ctx && this.ctx.state === 'suspended') {
-            this.ctx.resume();
-          }
+            if (!AudioCtx) return;
+            this.ctx = new AudioCtx();
+
+            // Pump Drone
+            this.pumpOsc = this.ctx.createOscillator();
+            this.pumpOsc.type = 'sawtooth';
+            this.pumpOsc.frequency.value = 55;
+            this.pumpGain = this.ctx.createGain();
+            this.pumpGain.gain.value = 0.03;
+
+            const lp = this.ctx.createBiquadFilter();
+            lp.type = 'lowpass';
+            lp.frequency.value = 130;
+            this.pumpOsc.connect(lp);
+            lp.connect(this.pumpGain);
+            this.pumpGain.connect(this.ctx.destination);
+            this.pumpOsc.start();
+
+            // Noise Water Jet
+            const buf = this.ctx.createBuffer(1, this.ctx.sampleRate * 2, this.ctx.sampleRate);
+            const d = buf.getChannelData(0);
+            for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+            this.noiseSource = this.ctx.createBufferSource();
+            this.noiseSource.buffer = buf;
+            this.noiseSource.loop = true;
+
+            this.noiseFilter = this.ctx.createBiquadFilter();
+            this.noiseFilter.type = 'bandpass';
+            this.noiseFilter.frequency.value = 1300;
+            this.noiseGain = this.ctx.createGain();
+            this.noiseGain.gain.value = 0;
+
+            this.noiseSource.connect(this.noiseFilter);
+            this.noiseFilter.connect(this.noiseGain);
+            this.noiseGain.connect(this.ctx.destination);
+            this.noiseSource.start();
+          } catch(e) {}
         },
-        playTone(freq, type = 'sine', duration = 0.2, gainVol = 0.25) {
+        setSpray(active, pitchMult = 1.0) {
+          try {
+            this.init();
+            if (!this.ctx) return;
+            if (this.ctx.state === 'suspended') this.ctx.resume();
+            const target = active ? 0.35 : 0;
+            this.noiseFilter.frequency.setValueAtTime(active ? 1000 * pitchMult : 400, this.ctx.currentTime);
+            this.noiseGain.gain.setTargetAtTime(target, this.ctx.currentTime, 0.04);
+            this.pumpGain.gain.setTargetAtTime(active ? 0.08 : 0.03, this.ctx.currentTime, 0.08);
+          } catch(e) {}
+        },
+        chime() {
           try {
             this.init();
             if (!this.ctx) return;
             const osc = this.ctx.createOscillator();
-            const gain = this.ctx.createGain();
-            osc.type = type;
-            osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
-            gain.gain.setValueAtTime(gainVol, this.ctx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
-            osc.connect(gain);
-            gain.connect(this.ctx.destination);
-            osc.start();
-            osc.stop(this.ctx.currentTime + duration);
+            const g = this.ctx.createGain();
+            osc.frequency.setValueAtTime(523.25, this.ctx.currentTime);
+            osc.frequency.setValueAtTime(783.99, this.ctx.currentTime + 0.15);
+            g.gain.setValueAtTime(0.25, this.ctx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.6);
+            osc.connect(g); g.connect(this.ctx.destination);
+            osc.start(); osc.stop(this.ctx.currentTime + 0.6);
           } catch(e) {}
-        },
-        playMergeChord(tier, combo) {
-          const notes = [261.6, 293.7, 329.6, 392.0, 440.0, 523.3, 587.3, 659.3, 784.0, 880.0, 1046.5];
-          const base = notes[tier % notes.length];
-          this.playTone(base, 'triangle', 0.25, 0.3);
-          setTimeout(() => this.playTone(base * 1.25, 'sine', 0.2, 0.2), 40);
-          if (combo > 1) {
-            setTimeout(() => this.playTone(base * 1.5, 'sine', 0.25, 0.25), 80);
-          }
-        },
-        playExplode() {
-          this.playTone(80, 'sawtooth', 0.4, 0.4);
-          this.playTone(45, 'triangle', 0.5, 0.5);
-        },
-        playQuake() {
-          for (let i = 0; i < 4; i++) {
-            setTimeout(() => this.playTone(55 + Math.random() * 30, 'square', 0.15, 0.2), i * 60);
-          }
         }
       };
 
-      const TIERS = [
-        { val: 2, r: 16, color: '#38bdf8' },
-        { val: 4, r: 20, color: '#4ade80' },
-        { val: 8, r: 25, color: '#fbbf24' },
-        { val: 16, r: 30, color: '#fb7185' },
-        { val: 32, r: 35, color: '#c084fc' },
-        { val: 64, r: 41, color: '#f43f5e' },
-        { val: 128, r: 47, color: '#06b6d4' },
-        { val: 256, r: 53, color: '#e879f9' },
-        { val: 512, r: 59, color: '#f97316' },
-        { val: 1024, r: 65, color: '#3b82f6' },
-        { val: 2048, r: 72, color: '#facc15' }
+      const NOZZLES = [
+        { name: "Nozzle: 0°", color: "#ef4444", radius: 14, force: 1.8, pitch: 1.5 },
+        { name: "Nozzle: 15°", color: "#eab308", radius: 26, force: 1.2, pitch: 1.2 },
+        { name: "Nozzle: 25°", color: "#22c55e", radius: 38, force: 0.9, pitch: 1.0 },
+        { name: "Nozzle: 40°", color: "#f8fafc", radius: 52, force: 0.6, pitch: 0.8 },
+        { name: "Soap Cannon", color: "#38bdf8", radius: 68, force: 0.4, pitch: 0.6 }
       ];
+      let currentNozzleIdx = 0;
 
-      let score = 0;
-      let combo = 1;
-      let comboTimer = 0;
-      let quakeCharge = 0;
-      let screenShake = 0;
-      let balls = [];
-      let particles = [];
-      let floatingTexts = [];
-      let dropX = canvas.width / 2;
-      let nextTier = 0;
-      let isGameOver = false;
-      let overflowTimer = 0;
-      const CEILING_Y = 85;
+      // Three.js Scene
+      const canvas = document.getElementById('canvas3d');
+      const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: "default" });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+      renderer.setSize(window.innerWidth, window.innerHeight);
 
-      const BUMPERS = [
-        { x: 80, y: 220, r: 10, lit: 0 },
-        { x: 280, y: 220, r: 10, lit: 0 },
-        { x: 180, y: 310, r: 12, lit: 0 }
-      ];
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color('#0f172a');
 
-      function pickNextTier() {
-        const rand = Math.random();
-        if (rand < 0.04) return 'bomb';
-        if (rand < 0.08) return 'rainbow';
-        return Math.floor(Math.random() * 3);
-      }
+      const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 40);
 
-      function updatePreview() {
-        if (nextTier === 'bomb') {
-          nextPreview.style.background = '#ef4444';
-          nextPreview.style.color = '#ef4444';
-        } else if (nextTier === 'rainbow') {
-          nextPreview.style.background = 'linear-gradient(45deg, #f43f5e, #38bdf8)';
-          nextPreview.style.color = '#fff';
-        } else {
-          const t = TIERS[nextTier];
-          nextPreview.style.background = t.color;
-          nextPreview.style.color = t.color;
-        }
-      }
+      // Lighting
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x1e293b, 0.8));
+      const sun = new THREE.DirectionalLight(0xfffaed, 1.2);
+      sun.position.set(5, 10, 6);
+      scene.add(sun);
 
-      nextTier = pickNextTier();
-      updatePreview();
+      // Patio Floor
+      const floor = new THREE.Mesh(
+        new THREE.PlaneGeometry(24, 24),
+        new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.85 })
+      );
+      floor.rotation.x = -Math.PI / 2;
+      scene.add(floor);
 
-      class Ball {
-        constructor(x, y, tier) {
-          this.x = x;
-          this.y = y;
-          this.tier = tier;
-          this.vx = (Math.random() - 0.5) * 1.5;
-          this.vy = 0;
+      // Dirt Canvas (Optimized 512x512)
+      const TEX_RES = 512;
+      const dirtCanvas = document.createElement('canvas');
+      dirtCanvas.width = TEX_RES; dirtCanvas.height = TEX_RES;
+      const dctx = dirtCanvas.getContext('2d');
 
-          if (tier === 'bomb') {
-            this.radius = 24;
-            this.color = '#ef4444';
-            this.label = '💣';
-          } else if (tier === 'rainbow') {
-            this.radius = 26;
-            this.color = '#ffffff';
-            this.label = '★';
-          } else {
-            this.radius = TIERS[tier].r;
-            this.color = TIERS[tier].color;
-            this.label = TIERS[tier].val;
+      let isFlashing = false;
+      function buildDirtTexture(highlight = false) {
+        dctx.save();
+        dctx.fillStyle = highlight ? '#ff4800' : '#2d1c10';
+        dctx.fillRect(0, 0, TEX_RES, TEX_RES);
+        if (!highlight) {
+          for (let i = 0; i < 2200; i++) {
+            dctx.fillStyle = Math.random() > 0.5 ? '#1a0d05' : '#422a18';
+            dctx.beginPath();
+            dctx.arc(Math.random() * TEX_RES, Math.random() * TEX_RES, Math.random() * 5 + 1.5, 0, Math.PI * 2);
+            dctx.fill();
           }
         }
+        dctx.restore();
+      }
+      buildDirtTexture();
 
-        update() {
-          this.vy += 0.42;
-          this.x += this.vx;
-          this.y += this.vy;
-          this.vx *= 0.985;
+      const dirtTexture = new THREE.CanvasTexture(dirtCanvas);
+      dirtTexture.generateMipmaps = false;
+      dirtTexture.minFilter = THREE.LinearFilter;
 
-          if (this.y + this.radius > canvas.height) {
-            this.y = canvas.height - this.radius;
-            this.vy *= -0.32;
-            if (Math.abs(this.vy) < 0.5) this.vy = 0;
-          }
+      // Buggy Vehicle Model
+      const vehicleGroup = new THREE.Group();
+      scene.add(vehicleGroup);
 
-          if (this.x - this.radius < 0) {
-            this.x = this.radius;
-            this.vx *= -0.6;
-          } else if (this.x + this.radius > canvas.width) {
-            this.x = canvas.width - this.radius;
-            this.vx *= -0.6;
-          }
+      const bodyPaint = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.25, metalness: 0.5 });
+      const grimeMaterial = new THREE.MeshStandardMaterial({ map: dirtTexture, transparent: true, opacity: 0.98, roughness: 0.9 });
 
-          BUMPERS.forEach(b => {
-            const dx = this.x - b.x;
-            const dy = this.y - b.y;
-            const dist = Math.hypot(dx, dy);
-            if (dist < this.radius + b.r) {
-              const angle = Math.atan2(dy, dx);
-              this.vx = Math.cos(angle) * 7;
-              this.vy = Math.sin(angle) * 7;
-              b.lit = 1.0;
-              SoundFX.playTone(520, 'sine', 0.1, 0.2);
-              score += 10;
-              scoreTxt.innerText = score;
+      const chassis = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.8, 3.2), bodyPaint);
+      chassis.position.y = 0.8;
+      vehicleGroup.add(chassis);
+
+      const grimeShell = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.8, 3.2), grimeMaterial);
+      grimeShell.position.copy(chassis.position);
+      grimeShell.scale.set(1.002, 1.002, 1.002);
+      vehicleGroup.add(grimeShell);
+
+      // Wheels
+      const tireGeo = new THREE.CylinderGeometry(0.38, 0.38, 0.28, 16);
+      const tireMat = new THREE.MeshStandardMaterial({ color: 0x090d16, roughness: 0.9 });
+      const wheelLocs = [[-0.96, 0.38, 1.0], [0.96, 0.38, 1.0], [-0.96, 0.38, -1.0], [0.96, 0.38, -1.0]];
+      wheelLocs.forEach(([x, y, z]) => {
+        const tire = new THREE.Mesh(tireGeo, tireMat);
+        tire.rotation.z = Math.PI / 2;
+        tire.position.set(x, y, z);
+        vehicleGroup.add(tire);
+      });
+
+      // Viewmodel Lance
+      const wandGroup = new THREE.Group();
+      const nozzleTipMat = new THREE.MeshStandardMaterial({ color: 0xef4444 });
+      const lance = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.5), new THREE.MeshStandardMaterial({ color: 0x94a3b8 }));
+      lance.rotation.x = Math.PI / 2; lance.position.set(0.18, -0.1, -0.6); wandGroup.add(lance);
+      const nozzleTip = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.012, 0.06), nozzleTipMat);
+      nozzleTip.rotation.x = Math.PI / 2; nozzleTip.position.set(0.18, -0.1, -0.85); wandGroup.add(nozzleTip);
+      camera.add(wandGroup);
+      scene.add(camera);
+
+      // Water Particles
+      const STREAM_COUNT = 80;
+      const streamGeo = new THREE.BufferGeometry();
+      const streamPos = new Float32Array(STREAM_COUNT * 3);
+      streamGeo.setAttribute('position', new THREE.BufferAttribute(streamPos, 3));
+      const streamMat = new THREE.PointsMaterial({ color: 0xcfeafe, size: 0.05, transparent: true, opacity: 0.8 });
+      const streamSystem = new THREE.Points(streamGeo, streamMat);
+      scene.add(streamSystem);
+
+      const particles = Array.from({ length: STREAM_COUNT }, () => ({ x: 0, y: -50, z: 0, vx: 0, vy: 0, vz: 0, life: 0 }));
+
+      // Controls
+      let isWashing = false;
+      let cameraOrbit = { theta: 0.4, phi: 1.1, dist: 3.8 };
+      let dragStart = { x: 0, y: 0 };
+      let isDragging = false;
+      let lastVibeTime = 0;
+
+      window.addEventListener('pointerdown', (e) => {
+        if (e.target.closest('#toolbar') || e.target.closest('#hud')) return;
+        isDragging = true;
+        dragStart.x = e.clientX;
+        dragStart.y = e.clientY;
+      });
+
+      window.addEventListener('pointermove', (e) => {
+        if (!isDragging) return;
+        const dx = (e.clientX - dragStart.x) * 0.005;
+        const dy = (e.clientY - dragStart.y) * 0.005;
+        cameraOrbit.theta -= dx;
+        cameraOrbit.phi = Math.max(0.2, Math.min(Math.PI / 2.05, cameraOrbit.phi - dy));
+        dragStart.x = e.clientX;
+        dragStart.y = e.clientY;
+      });
+      window.addEventListener('pointerup', () => isDragging = false);
+      window.addEventListener('pointercancel', () => isDragging = false);
+
+      const washBtn = document.getElementById('btn-wash');
+      washBtn.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        isWashing = true;
+        AudioEngine.setSpray(true, NOZZLES[currentNozzleIdx].pitch);
+      });
+      window.addEventListener('pointerup', () => {
+        if (isWashing) {
+          isWashing = false;
+          AudioEngine.setSpray(false);
+        }
+      });
+
+      const nozzleBtn = document.getElementById('btn-nozzle');
+      nozzleBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        currentNozzleIdx = (currentNozzleIdx + 1) % NOZZLES.length;
+        const n = NOZZLES[currentNozzleIdx];
+        nozzleBtn.innerText = n.name;
+        nozzleBtn.style.borderColor = n.color;
+        nozzleTipMat.color.set(n.color);
+        if (isWashing) AudioEngine.setSpray(true, n.pitch);
+      });
+
+      const flashBtn = document.getElementById('btn-flash');
+      flashBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        isFlashing = !isFlashing;
+        flashBtn.innerText = isFlashing ? "Reset View" : "⚡ Flash Dirt";
+        flashBtn.style.background = isFlashing ? "#0284c7" : "#d97706";
+        dctx.save();
+        dctx.globalCompositeOperation = 'source-in';
+        dctx.fillStyle = isFlashing ? '#ff3b00' : '#2d1c10';
+        dctx.fillRect(0, 0, TEX_RES, TEX_RES);
+        dctx.restore();
+        dirtTexture.needsUpdate = true;
+      });
+
+      // Raycast Surface Dirt Stripping
+      const raycaster = new THREE.Raycaster();
+      const screenCenter = new THREE.Vector2(0, 0);
+      let cleanedPixels = 0;
+      const TOTAL_PIXELS_ESTIMATE = TEX_RES * TEX_RES * 0.40;
+      let texNeedsSync = false;
+
+      function peelDirt() {
+        raycaster.setFromCamera(screenCenter, camera);
+        const hits = raycaster.intersectObject(grimeShell);
+        if (hits.length > 0) {
+          const hit = hits[0];
+          const distFactor = Math.max(0.4, Math.min(1.8, 3.2 / hit.distance));
+          const nozzle = NOZZLES[currentNozzleIdx];
+          const effRadius = nozzle.radius * distFactor;
+
+          if (hit.uv) {
+            const uvX = hit.uv.x * TEX_RES;
+            const uvY = (1 - hit.uv.y) * TEX_RES;
+
+            dctx.save();
+            dctx.globalCompositeOperation = 'destination-out';
+            const grad = dctx.createRadialGradient(uvX, uvY, 1, uvX, uvY, effRadius);
+            grad.addColorStop(0, 'rgba(0,0,0,1)');
+            grad.addColorStop(0.7, 'rgba(0,0,0,0.85)');
+            grad.addColorStop(1, 'rgba(0,0,0,0)');
+            dctx.fillStyle = grad;
+            dctx.beginPath();
+            dctx.arc(uvX, uvY, effRadius, 0, Math.PI * 2);
+            dctx.fill();
+            dctx.restore();
+
+            texNeedsSync = true;
+            cleanedPixels += effRadius * nozzle.force;
+
+            // Safe, throttled mobile haptics
+            const now = performance.now();
+            if (now - lastVibeTime > 120 && navigator.vibrate) {
+              navigator.vibrate(15);
+              lastVibeTime = now;
             }
-          });
-        }
 
-        draw() {
-          ctx.save();
-          ctx.beginPath();
-          ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-
-          if (this.tier === 'rainbow') {
-            const grad = ctx.createRadialGradient(this.x, this.y, 2, this.x, this.y, this.radius);
-            grad.addColorStop(0, '#ffffff');
-            grad.addColorStop(0.5, '#38bdf8');
-            grad.addColorStop(1, '#f43f5e');
-            ctx.fillStyle = grad;
-          } else {
-            ctx.fillStyle = this.color;
+            const pct = Math.min(100, Math.floor((cleanedPixels / TOTAL_PIXELS_ESTIMATE) * 100));
+            document.getElementById('txt-percent').innerText = pct + '%';
+            document.getElementById('prog-bar').style.width = pct + '%';
+            if (pct === 100) AudioEngine.chime();
           }
-
-          ctx.shadowColor = this.color;
-          ctx.shadowBlur = 14;
-          ctx.fill();
-          ctx.shadowBlur = 0;
-
-          ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-          ctx.lineWidth = 2;
-          ctx.stroke();
-
-          ctx.fillStyle = '#000';
-          ctx.font = '900 ' + (this.radius * 0.75) + 'px sans-serif';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(this.label, this.x, this.y);
-          ctx.restore();
         }
       }
 
-      function spawnSparks(x, y, color, count = 18) {
-        for (let i = 0; i < count; i++) {
-          const angle = Math.random() * Math.PI * 2;
-          const speed = Math.random() * 8 + 2;
-          particles.push({
-            x, y,
-            vx: Math.cos(angle) * speed,
-            vy: Math.sin(angle) * speed,
-            alpha: 1.0,
-            color,
-            size: Math.random() * 4 + 2
-          });
-        }
-      }
+      // Main Loop
+      let frameCounter = 0;
+      function render() {
+        requestAnimationFrame(render);
+        frameCounter++;
 
-      function addFloatingText(x, y, text, color = '#38bdf8') {
-        floatingTexts.push({ x, y, text, color, alpha: 1.0 });
-      }
+        camera.position.x = cameraOrbit.dist * Math.sin(cameraOrbit.phi) * Math.sin(cameraOrbit.theta);
+        camera.position.y = cameraOrbit.dist * Math.cos(cameraOrbit.phi);
+        camera.position.z = cameraOrbit.dist * Math.sin(cameraOrbit.phi) * Math.cos(cameraOrbit.theta);
+        camera.lookAt(0, 0.8, 0);
 
-      function handleCollisions() {
-        for (let i = 0; i < balls.length; i++) {
-          for (let j = i + 1; j < balls.length; j++) {
-            const b1 = balls[i];
-            const b2 = balls[j];
-            const dx = b2.x - b1.x;
-            const dy = b2.y - b1.y;
-            const dist = Math.hypot(dx, dy);
-            const minDist = b1.radius + b2.radius;
+        if (isWashing) {
+          wandGroup.position.z = -0.04 + Math.random() * 0.015;
+          peelDirt();
 
-            if (dist < minDist) {
-              if (b1.tier === 'bomb' || b2.tier === 'bomb') {
-                const bombIdx = b1.tier === 'bomb' ? i : j;
-                const bomb = balls[bombIdx];
-                triggerBomb(bomb.x, bomb.y, bombIdx);
-                return;
-              }
-
-              let canMerge = false;
-              let resultingTier = 0;
-
-              if (b1.tier === 'rainbow' && typeof b2.tier === 'number') {
-                canMerge = true;
-                resultingTier = Math.min(TIERS.length - 1, b2.tier + 1);
-              } else if (b2.tier === 'rainbow' && typeof b1.tier === 'number') {
-                canMerge = true;
-                resultingTier = Math.min(TIERS.length - 1, b1.tier + 1);
-              } else if (b1.tier === b2.tier && typeof b1.tier === 'number') {
-                canMerge = true;
-                resultingTier = Math.min(TIERS.length - 1, b1.tier + 1);
-              }
-
-              if (canMerge) {
-                const midX = (b1.x + b2.x) / 2;
-                const midY = (b1.y + b2.y) / 2;
-
-                spawnSparks(midX, midY, TIERS[resultingTier].color, 24);
-                balls.splice(j, 1);
-                balls.splice(i, 1);
-                balls.push(new Ball(midX, midY, resultingTier));
-
-                comboTimer = 110;
-                combo++;
-                const gained = TIERS[resultingTier].val * combo;
-                score += gained;
-                scoreTxt.innerText = score;
-                if (score > bestScore) {
-                  bestScore = score;
-                  bestTxt.innerText = bestScore;
-                  try { localStorage.setItem('neon_fusion_best', bestScore); } catch(e) {}
-                }
-
-                quakeCharge = Math.min(100, quakeCharge + 8);
-                btnQuake.innerText = `⚡ Quake (${quakeCharge}%)`;
-                if (quakeCharge >= 100) btnQuake.disabled = false;
-
-                screenShake = Math.min(16, 5 + combo * 2);
-                SoundFX.playMergeChord(resultingTier, combo);
-                if (navigator.vibrate) navigator.vibrate(25);
-
-                addFloatingText(midX, midY - 15, `+${gained} ${combo > 1 ? combo + 'x' : ''}`);
-                return;
-              }
-
-              const angle = Math.atan2(dy, dx);
-              const overlap = minDist - dist;
-              b1.x -= Math.cos(angle) * overlap * 0.5;
-              b1.y -= Math.sin(angle) * overlap * 0.5;
-              b2.x += Math.cos(angle) * overlap * 0.5;
-              b2.y += Math.sin(angle) * overlap * 0.5;
-
-              const normalX = dx / dist;
-              const normalY = dy / dist;
-              const kx = b1.vx - b2.vx;
-              const ky = b1.vy - b2.vy;
-              const p = 2 * (normalX * kx + normalY * ky) / 2;
-              b1.vx -= p * normalX * 0.7;
-              b1.vy -= p * normalY * 0.7;
-              b2.vx += p * normalX * 0.7;
-              b2.vy += p * normalY * 0.7;
+          for (let k = 0; k < 2; k++) {
+            const p = particles.find(pt => pt.life <= 0);
+            if (p) {
+              p.life = 0.5;
+              p.x = camera.position.x + 0.18 * Math.cos(cameraOrbit.theta + 0.8);
+              p.y = camera.position.y - 0.1;
+              p.z = camera.position.z + 0.18 * Math.sin(cameraOrbit.theta + 0.8);
+              p.vx = -p.x * 3.5 + (Math.random() - 0.5) * 0.3;
+              p.vy = (0.8 - p.y) * 3.5 + (Math.random() - 0.5) * 0.3;
+              p.vz = -p.z * 3.5 + (Math.random() - 0.5) * 0.3;
             }
-          }
-        }
-      }
-
-      function triggerBomb(x, y, bombIdx) {
-        balls.splice(bombIdx, 1);
-        spawnSparks(x, y, '#ef4444', 40);
-        screenShake = 22;
-        SoundFX.playExplode();
-        if (navigator.vibrate) navigator.vibrate([40, 30, 80]);
-
-        const BLAST_RAD = 110;
-        balls = balls.filter(b => {
-          const d = Math.hypot(b.x - x, b.y - y);
-          if (d < BLAST_RAD) {
-            spawnSparks(b.x, b.y, b.color, 10);
-            score += 100;
-            return false;
-          }
-          return true;
-        });
-        scoreTxt.innerText = score;
-        addFloatingText(x, y, 'BOOM! +100', '#ef4444');
-      }
-
-      // Robust Mobile Touch & Pointer System
-      function updateAim(e) {
-        const rect = canvas.getBoundingClientRect();
-        const clientX = e.clientX ?? (e.touches && e.touches[0] ? e.touches[0].clientX : dropX);
-        dropX = Math.max(30, Math.min(canvas.width - 30, (clientX - rect.left) * (canvas.width / rect.width)));
-      }
-
-      function dropBall() {
-        if (isGameOver) return;
-        if (balls.length < 32) {
-          balls.push(new Ball(dropX, 45, nextTier));
-          SoundFX.playTone(320, 'sine', 0.12, 0.2);
-          nextTier = pickNextTier();
-          updatePreview();
-        }
-      }
-
-      canvas.addEventListener('pointerdown', (e) => {
-        updateAim(e);
-        dropBall();
-      });
-
-      canvas.addEventListener('pointermove', (e) => {
-        updateAim(e);
-      });
-
-      // Earthquake button
-      btnQuake.addEventListener('click', () => {
-        if (quakeCharge < 100) return;
-        quakeCharge = 0;
-        btnQuake.disabled = true;
-        btnQuake.innerText = `⚡ Quake (0%)`;
-        screenShake = 25;
-        SoundFX.playQuake();
-        if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
-
-        balls.forEach(b => {
-          b.vy = -(Math.random() * 8 + 4);
-          b.vx = (Math.random() - 0.5) * 12;
-        });
-        addFloatingText(canvas.width / 2, canvas.height / 2, 'EARTHQUAKE!', '#facc15');
-      });
-
-      // Restart
-      btnRestart.addEventListener('click', () => {
-        balls = [];
-        particles = [];
-        floatingTexts = [];
-        score = 0;
-        combo = 1;
-        quakeCharge = 0;
-        scoreTxt.innerText = '0';
-        btnQuake.innerText = `⚡ Quake (0%)`;
-        btnQuake.disabled = true;
-        isGameOver = false;
-        overflowTimer = 0;
-        gameOverScreen.style.display = 'none';
-      });
-
-      // Spawn an initial ball so the playfield is never empty
-      balls.push(new Ball(canvas.width / 2, 45, 0));
-
-      // Game Loop
-      function loop() {
-        if (screenShake > 0) {
-          ctx.setTransform(1, 0, 0, 1, (Math.random() - 0.5) * screenShake, (Math.random() - 0.5) * screenShake);
-          screenShake *= 0.88;
-          if (screenShake < 0.4) ctx.setTransform(1, 0, 0, 1, 0, 0);
-        }
-
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        // Ceiling danger line
-        ctx.strokeStyle = overflowTimer > 30 ? '#ef4444' : 'rgba(239, 68, 68, 0.35)';
-        ctx.lineWidth = overflowTimer > 30 ? 3 : 1.5;
-        ctx.setLineDash([6, 6]);
-        ctx.beginPath();
-        ctx.moveTo(0, CEILING_Y);
-        ctx.lineTo(canvas.width, CEILING_Y);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        // Aim guide
-        ctx.strokeStyle = 'rgba(56, 189, 248, 0.35)';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([4, 4]);
-        ctx.beginPath();
-        ctx.moveTo(dropX, 45);
-        ctx.lineTo(dropX, canvas.height);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        // Draw Bumpers
-        BUMPERS.forEach(b => {
-          ctx.save();
-          ctx.beginPath();
-          ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
-          ctx.fillStyle = b.lit > 0 ? '#38bdf8' : '#1e293b';
-          ctx.shadowColor = '#38bdf8';
-          ctx.shadowBlur = b.lit > 0 ? 18 : 0;
-          ctx.fill();
-          ctx.strokeStyle = '#38bdf8';
-          ctx.lineWidth = 2;
-          ctx.stroke();
-          ctx.restore();
-          if (b.lit > 0) b.lit -= 0.04;
-        });
-
-        // Balls
-        let isOverflowing = false;
-        balls.forEach(b => {
-          b.update();
-          b.draw();
-          if (b.y - b.radius < CEILING_Y && Math.abs(b.vy) < 0.8) {
-            isOverflowing = true;
-          }
-        });
-
-        if (isOverflowing) {
-          overflowTimer++;
-          if (overflowTimer > 150 && !isGameOver) {
-            isGameOver = true;
-            finalScoreTxt.innerText = score;
-            gameOverScreen.style.display = 'flex';
-            SoundFX.playExplode();
           }
         } else {
-          overflowTimer = Math.max(0, overflowTimer - 1);
+          wandGroup.position.z = 0;
         }
 
-        handleCollisions();
+        // Throttle texture uploads to GPU to 30Hz
+        if (texNeedsSync && frameCounter % 2 === 0) {
+          dirtTexture.needsUpdate = true;
+          texNeedsSync = false;
+        }
 
-        // Particles
-        particles.forEach((p, idx
+        // Update particle stream
+        const posArr = streamGeo.attributes.position.array;
+        for (let i = 0; i < STREAM_COUNT; i++) {
+          const pt = particles[i];
+          if (pt.life > 0) {
+            pt.x += pt.vx * 0.016;
+            pt.y += pt.vy * 0.016;
+            pt.z += pt.vz * 0.016;
+            pt.life -= 0.04;
+          } else {
+            pt.y = -50;
+          }
+          posArr[i * 3] = pt.x;
+          posArr[i * 3 + 1] = pt.y;
+          posArr[i * 3 + 2] = pt.z;
+        }
+        streamGeo.attributes.position.needsUpdate = true;
+
+        renderer.render(scene, camera);
+      }
+      render();
+
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+    }
+  </script>
+</body>
+</html>
